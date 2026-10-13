@@ -1,11 +1,13 @@
 import re
 from collections.abc import Iterator
 from datetime import date, timezone
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -186,3 +188,12 @@ def delete_task(task_id: int, db: Annotated[Session, Depends(get_db)]) -> Respon
     db.delete(_get_or_404(db, task_id))
     db.commit()
     return Response(status_code=204)
+
+
+# 화면(frontend/)도 같은 포트에서 제공한다. 반드시 API 경로를 모두 등록한 뒤 마지막에 연결한다.
+# (정적 서버 :5500을 따로 띄워도 계속 동작한다. 최종 배포(T14)에서는 Nginx가 이 역할을 맡는다.)
+app.mount(
+    "/",
+    StaticFiles(directory=Path(__file__).resolve().parent.parent / "frontend", html=True),
+    name="frontend",
+)

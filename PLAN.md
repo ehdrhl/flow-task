@@ -57,7 +57,7 @@
   실행: 먼저 python -m backend.init_db(T10), 이후 .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload. 메모리 단계의 데이터(자동 이전 안 함)는 서버를 바꾸면서 사라졌다.
   확인: API로 등록한 두 행을 mariadb SQL(SELECT)로 조회하고 값이 같음(due_date DATE, created_at UTC). API 서버를 종료했다가 다시 시작해도 같은 행과 수정한 상태(DOING)가 유지됨. T06·T07 계약 검증 46건 통과(등록·기본값·422 위반 14건, PATCH 부분 수정·null·{}·위반 10건, 404, DELETE 204, 필터 AND, %·_·\ 검색, id 재사용 없음). 프런트엔드 통합 테스트 34건(실제 API) 통과. 포트 8001에 틀린 비밀번호로 띄운 임시 서버는 /api/health 200, /api/tasks와 POST 503이고 응답·로그에 비밀번호가 없음(임시 서버는 종료).
   테스트로 만든 행은 모두 직접 삭제했고 tasks는 비어 있다. 중간에 테스트 스크립트 오류로 생긴 행 14건은 내용(제목·생성 시각)을 확인한 뒤 해당 id만 삭제했다.
-  남은 사항: q 검색이 악센트도 구분하지 않는다(cafe로 café 검색). 대소문자 무시는 이전과 같고 악센트 차이만 있어 API-SPEC에 적었다. 프런트엔드는 받아온 목록에 화면에서 필터를 적용하므로 영향이 없다. 실제 브라우저 확인은 아직 하지 않았다.
+  남은 사항: q 검색이 악센트도 구분하지 않는다(cafe로 café 검색). 대소문자 무시는 이전과 같고 악센트 차이만 있어 API-SPEC에 적었다. 프런트엔드는 받아온 목록에 화면에서 필터를 적용하므로 영향이 없다. 사용자가 브라우저에서 http://localhost:8000 화면, 등록 후 새로고침 유지, /docs를 확인했다.
 ## 5장: 서버 분리
 - [ ] T12: DB 서버 구성 후 App 서버에서 SELECT 1 확인.
 - [ ] T13: App 서버 코드·가상환경·환경변수·systemd 구성.
@@ -67,7 +67,11 @@
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+T11 이후 편의 설정: 위 uvicorn 하나가 frontend/ 정적 파일도 함께 제공한다. 화면과 API를 http://localhost:8000 하나로 쓴다(별도 5500 서버는 필요 없고, 띄워도 동작한다). 최종 배포(T14)에서는 Nginx가 정적 파일과 /api 프록시를 맡는다.
 실제 존재하는 파일을 확인한 뒤 명령을 실행한다.
 ## 기록
 각 작업에 변경 파일, 실행 명령, 실제 확인 결과, 남은 오류를 기록한다.
 정상 동작을 확인한 작업 단위로 Git 커밋한다.
+## 추가 변경: 단일 포트(8000)
+요청에 따라 FastAPI가 frontend/를 같은 포트에서 제공하도록 backend/main.py 끝에 StaticFiles를 연결했다(PLAN의 작업 번호 밖의 변경).
+확인(curl·Node): /, index.html, styles.css, app.js 200과 올바른 Content-Type. /api/health·/api/tasks·/docs 기존대로 200. 없는 경로는 JSON 404, DELETE /api/tasks는 405, POST /는 405. ../.env, %2e%2e, ../backend/main.py, ../.git/config 등 경로 탈출 시도는 모두 404이며 본문에 비밀 없음. 5500 출처 CORS 유지. 8000에서 열린 화면 JS는 같은 출처 /api로 등록·상태 변경·삭제가 동작하고 화면과 서버 목록이 일치(사용자 데이터 불변, 확인용 행은 직접 삭제). 사용자가 브라우저에서 http://localhost:8000 화면, 등록 후 새로고침 유지, /docs를 확인했다.
