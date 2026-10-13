@@ -1,4 +1,6 @@
 const MAX_TITLE_LENGTH = 100;
+const STATUSES = ["TODO", "DOING", "DONE"];
+const STATUS_LABELS = { TODO: "할 일", DOING: "진행 중", DONE: "완료" };
 
 const form = document.getElementById("task-form");
 const input = document.getElementById("title-input");
@@ -21,7 +23,9 @@ function isValidStoredTask(item) {
     item.id > 0 &&
     typeof item.title === "string" &&
     item.title.trim().length >= 1 &&
-    item.title.length <= MAX_TITLE_LENGTH
+    item.title.length <= MAX_TITLE_LENGTH &&
+    // T02에서 저장된 항목에는 status가 없으므로 없으면 TODO로 본다.
+    (item.status === undefined || STATUSES.includes(item.status))
   );
 }
 
@@ -55,7 +59,9 @@ function loadTasks() {
     clearError();
     return;
   }
-  for (const t of parsed) tasks.push({ id: t.id, title: t.title });
+  for (const t of parsed) {
+    tasks.push({ id: t.id, title: t.title, status: t.status ?? "TODO" });
+  }
   nextId = tasks.reduce((max, t) => Math.max(max, t.id), 0) + 1;
 }
 
@@ -90,12 +96,116 @@ function validateTitle(raw) {
   return { title };
 }
 
+let editingId = null;
+
+function findTask(id) {
+  return tasks.find((t) => t.id === id);
+}
+
+function changeStatus(id, status) {
+  const task = findTask(id);
+  if (!task || !STATUSES.includes(status)) return;
+  task.status = status;
+  clearError();
+  saveTasks();
+  render();
+}
+
+function startEdit(id) {
+  editingId = id;
+  clearError();
+  render();
+}
+
+function cancelEdit() {
+  editingId = null;
+  clearError();
+  render();
+}
+
+function saveEdit(id, raw) {
+  const result = validateTitle(raw);
+  if (result.error) {
+    showError(result.error);
+    return;
+  }
+  const task = findTask(id);
+  if (task) task.title = result.title;
+  editingId = null;
+  clearError();
+  saveTasks();
+  render();
+}
+
+function deleteTask(id) {
+  const task = findTask(id);
+  if (!task) return;
+  // 취소하면 아무것도 바꾸지 않는다.
+  if (!confirm(`"${task.title}" 항목을 삭제할까요?`)) return;
+  tasks.splice(tasks.indexOf(task), 1);
+  if (editingId === id) editingId = null;
+  clearError();
+  saveTasks();
+  render();
+}
+
+function makeButton(label, onClick, type = "button") {
+  const button = document.createElement("button");
+  button.type = type;
+  button.textContent = label;
+  if (onClick) button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderEditRow(li, task) {
+  const editForm = document.createElement("form");
+  editForm.className = "edit-form";
+  const editInput = document.createElement("input");
+  editInput.type = "text";
+  editInput.value = task.title;
+  editInput.setAttribute("aria-label", "제목 수정");
+  editForm.append(editInput, makeButton("저장", null, "submit"), makeButton("취소", cancelEdit));
+  editForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveEdit(task.id, editInput.value);
+  });
+  li.appendChild(editForm);
+}
+
+function renderViewRow(li, task) {
+  const title = document.createElement("span");
+  title.className = "title";
+  title.textContent = task.title; // 글자로만 표시한다.
+
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "상태");
+  for (const status of STATUSES) {
+    const option = document.createElement("option");
+    option.value = status;
+    option.textContent = STATUS_LABELS[status];
+    select.appendChild(option);
+  }
+  select.value = task.status;
+  select.addEventListener("change", () => changeStatus(task.id, select.value));
+
+  const actions = document.createElement("span");
+  actions.className = "actions";
+  actions.append(
+    select,
+    makeButton("수정", () => startEdit(task.id)),
+    makeButton("삭제", () => deleteTask(task.id))
+  );
+  li.append(title, actions);
+}
+
 function render() {
   taskList.replaceChildren();
   for (const task of tasks) {
     const li = document.createElement("li");
     li.dataset.id = String(task.id);
-    li.textContent = task.title; // 글자로만 표시한다.
+    li.dataset.status = task.status;
+    if (task.id === editingId) renderEditRow(li, task);
+    else renderViewRow(li, task);
     taskList.appendChild(li);
   }
   emptyMessage.hidden = tasks.length > 0;
@@ -109,7 +219,7 @@ form.addEventListener("submit", (event) => {
     input.focus();
     return;
   }
-  tasks.push({ id: nextId++, title: result.title });
+  tasks.push({ id: nextId++, title: result.title, status: "TODO" });
   clearError();
   saveTasks();
   input.value = "";
