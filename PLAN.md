@@ -27,8 +27,12 @@
   확인: /docs에서 등록 후 조회. 입력 위반은 422.
   결과: 변경 파일 backend/main.py, API-SPEC.md. 메모리 목록에 보관하고 GET·POST /api/tasks 구현. 서버 검증: 제목 1~100자(공백 제거), 설명 최대 2000자, status·priority 허용값, due_date는 실제 존재하는 YYYY-MM-DD 또는 null, 모르는 필드 거절.
   실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload. curl로 정상 6건 201(기본값 TODO·NORMAL·null·"" 적용), 위반 16건(빈·공백·101자 제목, 제목 누락·null·숫자, 설명 2001자, 잘못된 status·priority, 없는 날짜·형식 오류·숫자·시간 포함 날짜, 모르는 필드, 깨진 JSON, 본문 없음) 모두 422, 조회 시 정상 6건만 있음, 재시작 후 [] 확인. 사용자가 /docs에서 등록(201)·빈 제목 422·조회를 확인했다. 응답 예시 표(id 0, "string", Validation Error)는 문서일 뿐 실제 결과는 Server response 영역에서 본다.
-- [ ] T07: PATCH·DELETE와 필터 구현.
+- [x] T07: PATCH·DELETE와 필터 구현.
   확인: 미전달 필드 유지, 없는 ID 404, 삭제 204.
+  결과: 변경 파일 backend/main.py, API-SPEC.md. PATCH /api/tasks/{id}(전달한 필드만 변경, due_date null로 삭제), DELETE /api/tasks/{id}(204), GET /api/tasks의 q·status·priority 필터(AND) 구현.
+  실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload 상태에서 curl 확인. title·status·due_date·description을 하나씩 수정해도 나머지 필드 유지, 빈 본문 {} 200 무변경. 없는 id PATCH·DELETE 404, DELETE 204(본문 0바이트), 같은 id 재삭제 404, 삭제 후 새 등록은 새 id(5)로 id 재사용 없음.
+  422 확인: 숫자 아닌 id, 빈 제목, title·status null, 잘못된 status·priority·날짜, 101자 제목, 2001자 설명, id·created_at 변경 시도, 깨진 JSON, 잘못된 status·priority 필터, 101자 q. 위반 후 대상과 다른 항목 모두 불변.
+  필터 확인: q 대소문자 무시·공백만이면 전체, status·priority 단독, q+priority, 세 조건 AND, 일치 없음 [].
 - [ ] T08: 프런트엔드 저장 처리를 API 호출로 교체.
   확인: 화면과 curl 목록이 같음. API 중지 시 오류 표시.
 ## 4장: DB
