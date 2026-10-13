@@ -23,8 +23,10 @@
   확인: curl로 200과 status=ok.
   결과: 변경 파일 API-SPEC.md, backend/__init__.py, backend/main.py, backend/requirements.txt(fastapi==0.143.0, uvicorn==0.54.0), .gitignore(.venv, __pycache__, .env). python3 -m venv .venv(시스템 Python에는 pip가 없어 가상환경에서 설치).
   실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000. curl -i http://127.0.0.1:8000/api/health → HTTP 200, {"status":"ok"}. /docs 200, 없는 경로 404 확인. 남은 오류 없음.
-- [ ] T06: 메모리 기반 /api/tasks GET과 POST.
+- [x] T06: 메모리 기반 /api/tasks GET과 POST.
   확인: /docs에서 등록 후 조회. 입력 위반은 422.
+  결과: 변경 파일 backend/main.py, API-SPEC.md. 메모리 목록에 보관하고 GET·POST /api/tasks 구현. 서버 검증: 제목 1~100자(공백 제거), 설명 최대 2000자, status·priority 허용값, due_date는 실제 존재하는 YYYY-MM-DD 또는 null, 모르는 필드 거절.
+  실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload. curl로 정상 6건 201(기본값 TODO·NORMAL·null·"" 적용), 위반 16건(빈·공백·101자 제목, 제목 누락·null·숫자, 설명 2001자, 잘못된 status·priority, 없는 날짜·형식 오류·숫자·시간 포함 날짜, 모르는 필드, 깨진 JSON, 본문 없음) 모두 422, 조회 시 정상 6건만 있음, 재시작 후 [] 확인. 사용자가 /docs에서 등록(201)·빈 제목 422·조회를 확인했다. 응답 예시 표(id 0, "string", Validation Error)는 문서일 뿐 실제 결과는 Server response 영역에서 본다.
 - [ ] T07: PATCH·DELETE와 필터 구현.
   확인: 미전달 필드 유지, 없는 ID 404, 삭제 204.
 - [ ] T08: 프런트엔드 저장 처리를 API 호출로 교체.

@@ -5,14 +5,14 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 
 ## 공통
 - 요청과 응답 본문은 JSON(UTF-8)이다.
-- 입력 검증은 서버에서도 한다. 규칙을 어기면 `422`를 돌려준다.
+- 입력 검증은 서버에서도 한다. 규칙을 어기면 `422`를 돌려주며, 본문은 FastAPI 기본 형식(`{"detail": [...]}`)이다.
 - 로그인과 인증은 없다.
 
 ## 구현 상태
 | 엔드포인트 | 작업 | 상태 |
 |---|---|---|
 | `GET /api/health` | T05 | 구현 |
-| `GET /api/tasks`, `POST /api/tasks` | T06 | 예정 |
+| `GET /api/tasks`, `POST /api/tasks` | T06 | 구현 |
 | `PATCH /api/tasks/{id}`, `DELETE /api/tasks/{id}` | T07 | 예정 |
 
 ## GET /api/health
@@ -20,7 +20,7 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 
 - 응답 `200`: `{"status": "ok"}`
 
-## Task 데이터 (T06 이후)
+## Task 데이터
 | 필드 | 타입 | 규칙 |
 |---|---|---|
 | id | 정수 | 서버가 부여한다. 수정·삭제는 이 값으로 처리한다. |
@@ -29,16 +29,18 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 | status | 문자열 | `TODO`, `DOING`, `DONE`, 기본값 `TODO` |
 | priority | 문자열 | `HIGH`, `NORMAL`, `LOW`, 기본값 `NORMAL` |
 | due_date | 문자열 또는 null | `YYYY-MM-DD`, 미지정은 `null` |
-| created_at | 문자열 | 서버가 부여한 생성 시각 |
+| created_at | 문자열 | 서버가 부여한 생성 시각(UTC, ISO 8601, 예: `2026-10-13T06:35:12+00:00`) |
 
 ## GET /api/tasks (T06, T07)
-- 응답 `200`: Task 배열
+- 응답 `200`: Task 배열(등록 순서, 없으면 `[]`)
 - 쿼리(T07): `q`(제목 검색), `status`, `priority`. 모두 지정하면 AND 조건이다.
 
 ## POST /api/tasks (T06)
-- 요청: `title` 필수. 나머지 필드는 선택이며 생략하면 기본값을 쓴다.
+- 요청: `title` 필수. `description`, `status`, `priority`, `due_date`는 선택이며 생략하면 기본값을 쓴다.
+  `id`, `created_at`은 서버가 정하므로 보낼 수 없다. 정의되지 않은 필드를 보내도 `422`이다.
 - 응답 `201`: 생성된 Task
-- 규칙 위반: `422`
+- 규칙 위반: `422`. 제목이 비었거나 공백뿐, 길이 초과, 형식이 다른 값(`status`, `priority` 오타, 존재하지 않는 날짜, `YYYY-MM-DD`가 아닌 날짜), 잘못된 JSON, 본문 없음을 포함한다. 위반한 요청은 저장하지 않는다.
+- `title`과 `description`은 앞뒤 공백을 제거해 저장한다. 값은 글자 그대로 저장하며 HTML로 해석하지 않는다.
 
 ## PATCH /api/tasks/{id} (T07)
 - 요청: 바꿀 필드만 전달한다. 전달하지 않은 필드는 유지한다.
