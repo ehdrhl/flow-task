@@ -51,8 +51,13 @@
   실행: .venv/bin/python -m backend.init_db → "tasks: 새로 생성"과 컬럼 목록, exit 0. SQL로 SHOW TABLES에 tasks, SHOW CREATE TABLE 확인.
   확인: 재실행하면 "이미 있어 건드리지 않음"이며 먼저 넣은 확인용 행이 그대로 남음(확인용 행은 직접 지움). created_at 기본값은 UTC(서버 로컬 시각과 9시간 차). 잘못된 status·priority, 공백 제목, 101자 제목, 없는 날짜, NULL 제목은 DB가 거부(4025·1406·1292·1048). 한글 100자 제목·2000자 설명은 저장됨. 틀린 비밀번호는 exit 1과 오류 메시지만 출력하고 비밀번호는 노출하지 않음. 환경변수가 없으면 누락된 이름을 알려 줌. 현재 tasks 테이블은 비어 있음. API는 T11 전까지 메모리를 계속 사용하며 /api/health 200 확인.
   남은 사항: 정렬은 DB 기본값 utf8mb4_uca1400_ai_ci로 대소문자·악센트를 구분하지 않는다(제목 검색 방식은 T11에서 확인). due_date는 DB에서 DATE, API에서는 YYYY-MM-DD 문자열이라 T11에서 변환한다.
-- [ ] T11: API 메모리 저장을 DB로 교체.
+- [x] T11: API 메모리 저장을 DB로 교체.
   확인: 등록한 행을 SQL로 조회. API 재시작 후 데이터 유지.
+  결과: 변경 파일 backend/main.py, API-SPEC.md. 메모리 목록·락을 제거하고 요청마다 SQLAlchemy 세션으로 tasks 테이블을 읽고 쓴다. API 계약(경로·응답 형식·검증·상태 코드)은 그대로이고 새 패키지는 없다. 필터(q·status·priority, AND)는 SQL로 처리하며 q의 %·_·\는 글자로 검색한다. DB 접속 오류는 503(비밀번호 등 내용 없음).
+  실행: 먼저 python -m backend.init_db(T10), 이후 .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload. 메모리 단계의 데이터(자동 이전 안 함)는 서버를 바꾸면서 사라졌다.
+  확인: API로 등록한 두 행을 mariadb SQL(SELECT)로 조회하고 값이 같음(due_date DATE, created_at UTC). API 서버를 종료했다가 다시 시작해도 같은 행과 수정한 상태(DOING)가 유지됨. T06·T07 계약 검증 46건 통과(등록·기본값·422 위반 14건, PATCH 부분 수정·null·{}·위반 10건, 404, DELETE 204, 필터 AND, %·_·\ 검색, id 재사용 없음). 프런트엔드 통합 테스트 34건(실제 API) 통과. 포트 8001에 틀린 비밀번호로 띄운 임시 서버는 /api/health 200, /api/tasks와 POST 503이고 응답·로그에 비밀번호가 없음(임시 서버는 종료).
+  테스트로 만든 행은 모두 직접 삭제했고 tasks는 비어 있다. 중간에 테스트 스크립트 오류로 생긴 행 14건은 내용(제목·생성 시각)을 확인한 뒤 해당 id만 삭제했다.
+  남은 사항: q 검색이 악센트도 구분하지 않는다(cafe로 café 검색). 대소문자 무시는 이전과 같고 악센트 차이만 있어 API-SPEC에 적었다. 프런트엔드는 받아온 목록에 화면에서 필터를 적용하므로 영향이 없다. 실제 브라우저 확인은 아직 하지 않았다.
 ## 5장: 서버 분리
 - [ ] T12: DB 서버 구성 후 App 서버에서 SELECT 1 확인.
 - [ ] T13: App 서버 코드·가상환경·환경변수·systemd 구성.
