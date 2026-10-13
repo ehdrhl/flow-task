@@ -1,0 +1,61 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f4f5f7;
+  color: #222;
+}
+
+.container {
+  max-width: 560px;
+  margin: 40px auto;
+  padding: 0 16px;
+}
+
+h1 { margin: 0 0 16px; }
+
+#task-form { display: flex; gap: 8px; }
+
+#task-form input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 1rem;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+}
+
+#task-form button {
+  padding: 10px 18px;
+  font-size: 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+#task-form button:hover { background: #1d4ed8; }
+
+.error { margin: 8px 0 0; color: #b91c1c; }
+
+#task-list { list-style: none; margin: 16px 0 0; padding: 0; }
+
+#task-list li {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.empty { color: #777; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
