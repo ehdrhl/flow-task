@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -13,6 +14,14 @@ from pydantic import (
 )
 
 app = FastAPI(title="Task Flow API")
+
+# 개발 단계에서는 프런트엔드(:5500)와 API(:8000)의 출처가 달라 브라우저가 CORS 허용을 요구한다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type"],
+)
 
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Description = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]

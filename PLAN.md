@@ -33,8 +33,12 @@
   실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload 상태에서 curl 확인. title·status·due_date·description을 하나씩 수정해도 나머지 필드 유지, 빈 본문 {} 200 무변경. 없는 id PATCH·DELETE 404, DELETE 204(본문 0바이트), 같은 id 재삭제 404, 삭제 후 새 등록은 새 id(5)로 id 재사용 없음.
   422 확인: 숫자 아닌 id, 빈 제목, title·status null, 잘못된 status·priority·날짜, 101자 제목, 2001자 설명, id·created_at 변경 시도, 깨진 JSON, 잘못된 status·priority 필터, 101자 q. 위반 후 대상과 다른 항목 모두 불변.
   필터 확인: q 대소문자 무시·공백만이면 전체, status·priority 단독, q+priority, 세 조건 AND, 일치 없음 [].
-- [ ] T08: 프런트엔드 저장 처리를 API 호출로 교체.
+- [x] T08: 프런트엔드 저장 처리를 API 호출로 교체.
   확인: 화면과 curl 목록이 같음. API 중지 시 오류 표시.
+  결과: 변경 파일 frontend/app.js, backend/main.py(CORS), API-SPEC.md. localStorage 저장을 제거하고 fetch로 GET·POST·PATCH·DELETE /api/tasks를 호출한다. 검색·필터·지연 표시는 받아온 목록에 화면에서 적용한다. 기존 localStorage(task-flow-v1) 값은 삭제하지 않고 자동 이전하지도 않는다(PRD).
+  동작: 시작 시 목록 불러오기(실패하면 오래된 목록 대신 오류와 빈 화면), 불러오지 못한 상태에서는 등록·수정·삭제를 막고 다시 불러오기를 시도, 서버에 없는 항목(404)은 오류 표시 후 목록 새로고침, 수정 중 실패해도 입력값 유지, 등록 응답 대기 중 중복 제출 방지.
+  실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload, python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend. CORS는 curl로 확인(5500 두 주소의 preflight PATCH·DELETE 200과 허용 헤더, 다른 출처는 400·허용 헤더 없음).
+  Node DOM 목 + 실제 API 서버 통합 테스트 34건 통과(화면 목록과 서버 목록 일치: 등록·수정·삭제·새로고침·curl 등록 후, 필터 중 수정·삭제 id 기준, 삭제 취소, 404·500·422·연결 끊김 처리). API 서버를 실제로 종료한 상태에서도 오류 메시지 "API 서버에 연결할 수 없습니다"와 빈 화면, 등록 실패와 입력값 유지 확인. 사용자가 브라우저에서 화면과 API 목록 일치, 새로고침 유지, curl 등록 항목 표시, API 중지 시 오류 표시, 재시작 후 복구를 확인했다. (API 루트 / 는 404가 정상이다: 주소는 /api/... 와 /docs.)
 ## 4장: DB
 - [ ] T09: MariaDB 전용 사용자·DB와 .env 준비. 접속 확인.
 - [ ] T10: backend/database.py, models.py, init_db.py 생성.
