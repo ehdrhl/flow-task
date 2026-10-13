@@ -44,8 +44,13 @@
   결과: MariaDB 11.8.6이 127.0.0.1:3306에서 실행 중. 관리자 권한이 필요한 DB·사용자 생성은 사용자가 sudo로 직접 실행했다(DB task_flow, 사용자 task_flow_app, 권한은 task_flow.*로 제한). 변경 파일 .env.example(변수 이름과 가짜 값), .env는 Git 제외 파일이며 권한을 600으로 맞췄다. 비밀번호는 문서·로그에 남기지 않았다.
   확인(mariadb 클라이언트, .env 값 사용): SELECT 1, CURRENT_USER()=task_flow_app@localhost, DATABASE()=task_flow. 비밀번호 없음·틀린 비밀번호는 1045로 거부. SHOW DATABASES에는 information_schema와 task_flow만 보임. mysql.user 조회는 1142로 거부. task_flow 안에서 임시 테이블 생성·삭제 가능, 기존 테이블 없음(생성한 임시 테이블은 삭제함).
   남은 사항: DB 문자셋은 utf8mb4, 정렬은 utf8mb4_uca1400_ai_ci(서버 기본값). DB 비밀번호가 4자로 짧다. 로컬 학습 환경에서는 허용하지만 서버 분리·배포(T12 이후)에서는 긴 무작위 값으로 바꾼다. 접속 허용 범위는 localhost·127.0.0.1이며 T12에서 다시 정한다.
-- [ ] T10: backend/database.py, models.py, init_db.py 생성.
+- [x] T10: backend/database.py, models.py, init_db.py 생성.
   확인: python -m backend.init_db 실행 후 tasks 테이블 확인.
+  결과: 변경 파일 backend/database.py(.env 읽기, SQLAlchemy 엔진·세션), backend/models.py(Task 모델), backend/init_db.py, backend/requirements.txt. 새 패키지 sqlalchemy==2.1.4(테이블·쿼리), pymysql==1.2.3(MariaDB 드라이버), python-dotenv==1.2.4(.env 읽기)를 기록했다.
+  tasks 테이블: id(PK, AUTO_INCREMENT), title VARCHAR(100), description VARCHAR(2000) 기본 '', status 기본 TODO, priority 기본 NORMAL, due_date DATE NULL, created_at DATETIME 기본 UTC_TIMESTAMP(). CHECK 제약으로 status·priority 허용값과 공백뿐인 제목을 막는다.
+  실행: .venv/bin/python -m backend.init_db → "tasks: 새로 생성"과 컬럼 목록, exit 0. SQL로 SHOW TABLES에 tasks, SHOW CREATE TABLE 확인.
+  확인: 재실행하면 "이미 있어 건드리지 않음"이며 먼저 넣은 확인용 행이 그대로 남음(확인용 행은 직접 지움). created_at 기본값은 UTC(서버 로컬 시각과 9시간 차). 잘못된 status·priority, 공백 제목, 101자 제목, 없는 날짜, NULL 제목은 DB가 거부(4025·1406·1292·1048). 한글 100자 제목·2000자 설명은 저장됨. 틀린 비밀번호는 exit 1과 오류 메시지만 출력하고 비밀번호는 노출하지 않음. 환경변수가 없으면 누락된 이름을 알려 줌. 현재 tasks 테이블은 비어 있음. API는 T11 전까지 메모리를 계속 사용하며 /api/health 200 확인.
+  남은 사항: 정렬은 DB 기본값 utf8mb4_uca1400_ai_ci로 대소문자·악센트를 구분하지 않는다(제목 검색 방식은 T11에서 확인). due_date는 DB에서 DATE, API에서는 YYYY-MM-DD 문자열이라 T11에서 변환한다.
 - [ ] T11: API 메모리 저장을 DB로 교체.
   확인: 등록한 행을 SQL로 조회. API 재시작 후 데이터 유지.
 ## 5장: 서버 분리
