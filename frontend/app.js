@@ -1,9 +1,18 @@
 const MAX_TITLE_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 2000;
 const STATUSES = ["TODO", "DOING", "DONE"];
 const STATUS_LABELS = { TODO: "할 일", DOING: "진행 중", DONE: "완료" };
+const PRIORITIES = ["HIGH", "NORMAL", "LOW"];
+const PRIORITY_LABELS = { HIGH: "높음", NORMAL: "보통", LOW: "낮음" };
 
 const form = document.getElementById("task-form");
 const input = document.getElementById("title-input");
+const descriptionInput = document.getElementById("description-input");
+const priorityInput = document.getElementById("priority-input");
+const dueInput = document.getElementById("due-input");
+const searchInput = document.getElementById("search-input");
+const statusFilter = document.getElementById("status-filter");
+const priorityFilter = document.getElementById("priority-filter");
 const errorMessage = document.getElementById("error-message");
 const taskList = document.getElementById("task-list");
 const emptyMessage = document.getElementById("empty-message");
@@ -15,6 +24,25 @@ let nextId = 1;
 // 저장값이 손상되었거나 저장소를 쓸 수 없으면 false. 이때는 기존 저장값을 덮어쓰지 않는다.
 let storageWritable = true;
 
+function isValidDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
+// 로컬 달력 기준 오늘 날짜(YYYY-MM-DD)
+function todayString() {
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${mm}-${dd}`;
+}
+
+function isOverdue(task) {
+  return task.due_date !== null && task.status !== "DONE" && task.due_date < todayString();
+}
+
 function isValidStoredTask(item) {
   return (
     item !== null &&
@@ -24,8 +52,12 @@ function isValidStoredTask(item) {
     typeof item.title === "string" &&
     item.title.trim().length >= 1 &&
     item.title.length <= MAX_TITLE_LENGTH &&
-    // T02에서 저장된 항목에는 status가 없으므로 없으면 TODO로 본다.
-    (item.status === undefined || STATUSES.includes(item.status))
+    // 이전 단계(T02·T03)에서 저장된 항목에는 새 필드가 없으므로, 없으면 기본값으로 본다.
+    (item.status === undefined || STATUSES.includes(item.status)) &&
+    (item.description === undefined ||
+      (typeof item.description === "string" && item.description.length <= MAX_DESCRIPTION_LENGTH)) &&
+    (item.priority === undefined || PRIORITIES.includes(item.priority)) &&
+    (item.due_date === undefined || item.due_date === null || isValidDate(item.due_date))
   );
 }
 
@@ -60,7 +92,14 @@ function loadTasks() {
     return;
   }
   for (const t of parsed) {
-    tasks.push({ id: t.id, title: t.title, status: t.status ?? "TODO" });
+    tasks.push({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? "",
+      status: t.status ?? "TODO",
+      priority: t.priority ?? "NORMAL",
+      due_date: t.due_date ?? null,
+    });
   }
   nextId = tasks.reduce((max, t) => Math.max(max, t.id), 0) + 1;
 }
@@ -96,6 +135,28 @@ function validateTitle(raw) {
   return { title };
 }
 
+// 제목·설명·우선순위·마감일을 검사해 저장할 값을 돌려준다.
+function validateFields({ title, description, priority, dueDate }) {
+  const titleResult = validateTitle(title);
+  if (titleResult.error) return { error: titleResult.error };
+  const desc = description.trim();
+  if (desc.length > MAX_DESCRIPTION_LENGTH) {
+    return { error: `설명은 ${MAX_DESCRIPTION_LENGTH}자 이하로 입력해 주세요.` };
+  }
+  if (!PRIORITIES.includes(priority)) return { error: "우선순위를 올바르게 선택해 주세요." };
+  if (dueDate !== "" && !isValidDate(dueDate)) {
+    return { error: "마감일은 YYYY-MM-DD 형식의 올바른 날짜여야 합니다." };
+  }
+  return {
+    values: {
+      title: titleResult.title,
+      description: desc,
+      priority,
+      due_date: dueDate === "" ? null : dueDate,
+    },
+  };
+}
+
 let editingId = null;
 
 function findTask(id) {
@@ -123,14 +184,14 @@ function cancelEdit() {
   render();
 }
 
-function saveEdit(id, raw) {
-  const result = validateTitle(raw);
+function saveEdit(id, fields) {
+  const result = validateFields(fields);
   if (result.error) {
     showError(result.error);
     return;
   }
   const task = findTask(id);
-  if (task) task.title = result.title;
+  if (task) Object.assign(task, result.values); // status와 id는 그대로 둔다.
   editingId = null;
   clearError();
   saveTasks();
@@ -157,19 +218,56 @@ function makeButton(label, onClick, type = "button") {
   return button;
 }
 
+function makeSelect(label, labels, value) {
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", label);
+  for (const [optionValue, optionLabel] of Object.entries(labels)) {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionLabel;
+    select.appendChild(option);
+  }
+  select.value = value;
+  return select;
+}
+
 function renderEditRow(li, task) {
   const editForm = document.createElement("form");
   editForm.className = "edit-form";
-  const editInput = document.createElement("input");
-  editInput.type = "text";
-  editInput.value = task.title;
-  editInput.setAttribute("aria-label", "제목 수정");
-  editForm.append(editInput, makeButton("저장", null, "submit"), makeButton("취소", cancelEdit));
+  const titleEdit = document.createElement("input");
+  titleEdit.type = "text";
+  titleEdit.value = task.title;
+  titleEdit.setAttribute("aria-label", "제목 수정");
+  const descEdit = document.createElement("textarea");
+  descEdit.rows = 2;
+  descEdit.value = task.description;
+  descEdit.setAttribute("aria-label", "설명 수정");
+  const priorityEdit = makeSelect("우선순위 수정", PRIORITY_LABELS, task.priority);
+  const dueEdit = document.createElement("input");
+  dueEdit.type = "date";
+  dueEdit.value = task.due_date ?? "";
+  dueEdit.setAttribute("aria-label", "마감일 수정");
+  const buttons = document.createElement("div");
+  buttons.className = "edit-buttons";
+  buttons.append(makeButton("저장", null, "submit"), makeButton("취소", cancelEdit));
+  editForm.append(titleEdit, descEdit, priorityEdit, dueEdit, buttons);
   editForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    saveEdit(task.id, editInput.value);
+    saveEdit(task.id, {
+      title: titleEdit.value,
+      description: descEdit.value,
+      priority: priorityEdit.value,
+      dueDate: dueEdit.value,
+    });
   });
   li.appendChild(editForm);
+}
+
+function makeBadge(text, className) {
+  const badge = document.createElement("span");
+  badge.className = `badge ${className}`;
+  badge.textContent = text;
+  return badge;
 }
 
 function renderViewRow(li, task) {
@@ -177,15 +275,7 @@ function renderViewRow(li, task) {
   title.className = "title";
   title.textContent = task.title; // 글자로만 표시한다.
 
-  const select = document.createElement("select");
-  select.setAttribute("aria-label", "상태");
-  for (const status of STATUSES) {
-    const option = document.createElement("option");
-    option.value = status;
-    option.textContent = STATUS_LABELS[status];
-    select.appendChild(option);
-  }
-  select.value = task.status;
+  const select = makeSelect("상태", STATUS_LABELS, task.status);
   select.addEventListener("change", () => changeStatus(task.id, select.value));
 
   const actions = document.createElement("span");
@@ -195,37 +285,81 @@ function renderViewRow(li, task) {
     makeButton("수정", () => startEdit(task.id)),
     makeButton("삭제", () => deleteTask(task.id))
   );
-  li.append(title, actions);
+
+  const main = document.createElement("div");
+  main.className = "row-main";
+  main.append(title, actions);
+
+  const meta = document.createElement("div");
+  meta.className = "row-meta";
+  meta.appendChild(makeBadge(`우선순위 ${PRIORITY_LABELS[task.priority]}`, `priority-${task.priority}`));
+  if (task.due_date !== null) meta.appendChild(makeBadge(`마감 ${task.due_date}`, "due"));
+  if (isOverdue(task)) meta.appendChild(makeBadge("지연", "overdue"));
+
+  li.append(main, meta);
+  if (task.description !== "") {
+    const description = document.createElement("p");
+    description.className = "description";
+    description.textContent = task.description; // 글자로만 표시한다.
+    li.appendChild(description);
+  }
+}
+
+// 제목 검색, 상태, 우선순위 조건을 모두 만족하는(AND) 항목만 남긴다.
+function visibleTasks() {
+  const query = searchInput.value.trim().toLowerCase();
+  return tasks.filter(
+    (task) =>
+      (query === "" || task.title.toLowerCase().includes(query)) &&
+      (statusFilter.value === "" || task.status === statusFilter.value) &&
+      (priorityFilter.value === "" || task.priority === priorityFilter.value)
+  );
 }
 
 function render() {
+  const visible = visibleTasks();
   taskList.replaceChildren();
-  for (const task of tasks) {
+  for (const task of visible) {
     const li = document.createElement("li");
     li.dataset.id = String(task.id);
     li.dataset.status = task.status;
+    li.dataset.overdue = String(isOverdue(task));
     if (task.id === editingId) renderEditRow(li, task);
     else renderViewRow(li, task);
     taskList.appendChild(li);
   }
-  emptyMessage.hidden = tasks.length > 0;
+  if (tasks.length === 0) emptyMessage.textContent = "등록된 할 일이 없습니다.";
+  else emptyMessage.textContent = "조건에 맞는 할 일이 없습니다.";
+  emptyMessage.hidden = visible.length > 0;
 }
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const result = validateTitle(input.value);
+  const result = validateFields({
+    title: input.value,
+    description: descriptionInput.value,
+    priority: priorityInput.value,
+    dueDate: dueInput.value,
+  });
   if (result.error) {
     showError(result.error);
     input.focus();
     return;
   }
-  tasks.push({ id: nextId++, title: result.title, status: "TODO" });
+  tasks.push({ id: nextId++, status: "TODO", ...result.values });
   clearError();
   saveTasks();
   input.value = "";
+  descriptionInput.value = "";
+  priorityInput.value = "NORMAL";
+  dueInput.value = "";
   input.focus();
   render();
 });
+
+searchInput.addEventListener("input", render);
+statusFilter.addEventListener("change", render);
+priorityFilter.addEventListener("change", render);
 
 loadTasks();
 render();

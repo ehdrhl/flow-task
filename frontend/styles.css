@@ -67,3 +67,25 @@ h1 { margin: 0 0 16px; }
 .actions select, .actions button, .edit-form button { padding: 4px 8px; font-size: 0.9rem; }
 .edit-form { display: flex; gap: 6px; flex: 1; }
 .edit-form input { flex: 1; padding: 6px 8px; font-size: 1rem; }
+
+/* T04 */
+#task-form { flex-direction: column; }
+.form-row { display: flex; gap: 8px; align-items: center; }
+.form-row input[type="text"] { flex: 1; }
+.form-row.options { gap: 16px; font-size: 0.9rem; }
+.form-row.options select, .form-row.options input { padding: 4px 6px; font-size: 0.9rem; }
+textarea { width: 100%; padding: 8px 12px; font: inherit; border: 1px solid #bbb; border-radius: 6px; resize: vertical; }
+.filters { display: flex; gap: 8px; margin-top: 16px; }
+.filters input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 0.95rem; border: 1px solid #bbb; border-radius: 6px; }
+.filters select { padding: 8px; font-size: 0.95rem; }
+#task-list li { flex-direction: column; align-items: stretch; gap: 6px; }
+.row-main { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.row-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.8rem; }
+.badge { padding: 2px 8px; border-radius: 999px; background: #eceff3; color: #444; }
+.badge.priority-HIGH { background: #fee2e2; color: #991b1b; }
+.badge.priority-LOW { background: #e0f2fe; color: #075985; }
+.badge.overdue { background: #b91c1c; color: #fff; font-weight: 600; }
+#task-list li[data-overdue="true"] { border-color: #b91c1c; }
+.description { margin: 0; color: #555; font-size: 0.9rem; white-space: pre-wrap; }
+.edit-form { flex-direction: column; }
+.edit-buttons { display: flex; gap: 6px; }
