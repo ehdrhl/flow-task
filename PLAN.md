@@ -19,8 +19,10 @@
   결과: 변경 파일 frontend/index.html, styles.css, app.js. 설명(최대 2000자)·우선순위(HIGH/NORMAL/LOW, 기본 NORMAL)·마감일(YYYY-MM-DD, 미지정 null) 등록·수정, 제목 검색과 상태·우선순위 필터(AND), 로컬 날짜 기준 지연 표시(DONE 제외) 구현. T02·T03 저장 항목은 새 필드를 기본값으로 채워 복원한다.
   Node DOM·localStorage 목 테스트 37건 통과(어제 마감 TODO·DOING 지연, DONE·오늘·내일·무기한은 지연 아님, 필터 AND 조합, 필터 중 수정·삭제가 보이는 항목의 id에만 적용, 잘못된 날짜·길이·우선순위 거절, 잘못된 저장값 보존). T01 9건·T02 15건·T03 18건 회귀 통과(목은 새 화면 구조에 맞게 수정). 사용자가 브라우저에서 지연 표시, 검색·필터 AND, 필터 중 수정·삭제(삭제 취소 포함), 새로고침 후 유지를 확인했다. 삭제 확인창이 한 번 뜨지 않았으나 브라우저 대화상자 설정 문제였고 모두 정상 확인했다.
 ## 3장: API
-- [ ] T05: API-SPEC.md 작성, FastAPI /api/health 구현.
+- [x] T05: API-SPEC.md 작성, FastAPI /api/health 구현.
   확인: curl로 200과 status=ok.
+  결과: 변경 파일 API-SPEC.md, backend/__init__.py, backend/main.py, backend/requirements.txt(fastapi==0.143.0, uvicorn==0.54.0), .gitignore(.venv, __pycache__, .env). python3 -m venv .venv(시스템 Python에는 pip가 없어 가상환경에서 설치).
+  실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000. curl -i http://127.0.0.1:8000/api/health → HTTP 200, {"status":"ok"}. /docs 200, 없는 경로 404 확인. 남은 오류 없음.
 - [ ] T06: 메모리 기반 /api/tasks GET과 POST.
   확인: /docs에서 등록 후 조회. 입력 위반은 422.
 - [ ] T07: PATCH·DELETE와 필터 구현.
