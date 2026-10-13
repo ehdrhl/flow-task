@@ -40,7 +40,10 @@
   실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload, python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend. CORS는 curl로 확인(5500 두 주소의 preflight PATCH·DELETE 200과 허용 헤더, 다른 출처는 400·허용 헤더 없음).
   Node DOM 목 + 실제 API 서버 통합 테스트 34건 통과(화면 목록과 서버 목록 일치: 등록·수정·삭제·새로고침·curl 등록 후, 필터 중 수정·삭제 id 기준, 삭제 취소, 404·500·422·연결 끊김 처리). API 서버를 실제로 종료한 상태에서도 오류 메시지 "API 서버에 연결할 수 없습니다"와 빈 화면, 등록 실패와 입력값 유지 확인. 사용자가 브라우저에서 화면과 API 목록 일치, 새로고침 유지, curl 등록 항목 표시, API 중지 시 오류 표시, 재시작 후 복구를 확인했다. (API 루트 / 는 404가 정상이다: 주소는 /api/... 와 /docs.)
 ## 4장: DB
-- [ ] T09: MariaDB 전용 사용자·DB와 .env 준비. 접속 확인.
+- [x] T09: MariaDB 전용 사용자·DB와 .env 준비. 접속 확인.
+  결과: MariaDB 11.8.6이 127.0.0.1:3306에서 실행 중. 관리자 권한이 필요한 DB·사용자 생성은 사용자가 sudo로 직접 실행했다(DB task_flow, 사용자 task_flow_app, 권한은 task_flow.*로 제한). 변경 파일 .env.example(변수 이름과 가짜 값), .env는 Git 제외 파일이며 권한을 600으로 맞췄다. 비밀번호는 문서·로그에 남기지 않았다.
+  확인(mariadb 클라이언트, .env 값 사용): SELECT 1, CURRENT_USER()=task_flow_app@localhost, DATABASE()=task_flow. 비밀번호 없음·틀린 비밀번호는 1045로 거부. SHOW DATABASES에는 information_schema와 task_flow만 보임. mysql.user 조회는 1142로 거부. task_flow 안에서 임시 테이블 생성·삭제 가능, 기존 테이블 없음(생성한 임시 테이블은 삭제함).
+  남은 사항: DB 문자셋은 utf8mb4, 정렬은 utf8mb4_uca1400_ai_ci(서버 기본값). DB 비밀번호가 4자로 짧다. 로컬 학습 환경에서는 허용하지만 서버 분리·배포(T12 이후)에서는 긴 무작위 값으로 바꾼다. 접속 허용 범위는 localhost·127.0.0.1이며 T12에서 다시 정한다.
 - [ ] T10: backend/database.py, models.py, init_db.py 생성.
   확인: python -m backend.init_db 실행 후 tasks 테이블 확인.
 - [ ] T11: API 메모리 저장을 DB로 교체.
