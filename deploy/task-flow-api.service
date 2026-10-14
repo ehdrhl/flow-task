@@ -1,0 +1,19 @@
+[Unit]
+Description=Task Flow API (FastAPI + uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=donkey
+WorkingDirectory=/home/donkey/vibe-lab/flow-task
+# DB 접속 정보는 .env에서 읽는다(Git 제외, 권한 600). 값은 이 파일에 쓰지 않는다.
+EnvironmentFile=/home/donkey/vibe-lab/flow-task/.env
+ExecStart=/home/donkey/vibe-lab/flow-task/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
