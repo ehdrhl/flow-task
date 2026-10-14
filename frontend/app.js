@@ -349,6 +349,7 @@ function renderViewRow(li, task) {
 
   const meta = document.createElement("div");
   meta.className = "row-meta";
+  meta.appendChild(makeBadge(STATUS_LABELS[task.status], `status-${task.status}`));
   meta.appendChild(makeBadge(`우선순위 ${PRIORITY_LABELS[task.priority]}`, `priority-${task.priority}`));
   if (task.due_date !== null) meta.appendChild(makeBadge(`마감 ${task.due_date}`, "due"));
   if (isOverdue(task)) meta.appendChild(makeBadge("지연", "overdue"));
@@ -398,6 +399,7 @@ function render() {
     const li = document.createElement("li");
     li.dataset.id = String(task.id);
     li.dataset.status = task.status;
+    li.dataset.priority = task.priority;
     li.dataset.overdue = String(isOverdue(task));
     if (task.id === editingId) renderEditRow(li, task);
     else renderViewRow(li, task);
