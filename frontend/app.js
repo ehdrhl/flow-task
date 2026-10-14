@@ -18,6 +18,13 @@ const dueInput = document.getElementById("due-input");
 const searchInput = document.getElementById("search-input");
 const statusFilter = document.getElementById("status-filter");
 const priorityFilter = document.getElementById("priority-filter");
+const sortSelect = document.getElementById("sort-select");
+const formPanel = document.getElementById("form-panel");
+const formToggle = document.getElementById("form-toggle");
+const formToggleLabel = document.getElementById("form-toggle-label");
+const listPanel = document.getElementById("list-panel");
+const listToggle = document.getElementById("list-toggle");
+const listToggleLabel = document.getElementById("list-toggle-label");
 const errorMessage = document.getElementById("error-message");
 const taskList = document.getElementById("task-list");
 const emptyMessage = document.getElementById("empty-message");
@@ -331,8 +338,26 @@ function visibleTasks() {
   );
 }
 
+// 정렬 기준이 같으면 등록 순서(id)를 따른다. 마감일이 없는 항목은 마지막이다.
+const PRIORITY_RANK = { HIGH: 0, NORMAL: 1, LOW: 2 };
+const SORTERS = {
+  created: () => 0,
+  due: (a, b) => {
+    if (a.due_date === b.due_date) return 0;
+    if (a.due_date === null) return 1;
+    if (b.due_date === null) return -1;
+    return a.due_date < b.due_date ? -1 : 1;
+  },
+  priority: (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
+};
+
+function sortedTasks(list) {
+  const compare = SORTERS[sortSelect.value] ?? SORTERS.created;
+  return [...list].sort((a, b) => compare(a, b) || a.id - b.id);
+}
+
 function render() {
-  const visible = visibleTasks();
+  const visible = sortedTasks(visibleTasks());
   taskList.replaceChildren();
   for (const task of visible) {
     const li = document.createElement("li");
@@ -378,8 +403,24 @@ form.addEventListener("submit", async (event) => {
   input.focus();
 });
 
+// 패널을 접거나 펼친다. 접어도 입력 중인 값과 목록 상태는 지우지 않는다.
+function setupCollapsible(panel, button, label, name, onOpen) {
+  button.addEventListener("click", () => {
+    const open = panel.classList.contains("collapsed");
+    panel.classList.toggle("collapsed", !open);
+    button.setAttribute("aria-expanded", String(open));
+    label.textContent = open ? "−" : "+";
+    button.setAttribute("aria-label", `${name} ${open ? "접기" : "펼치기"}`);
+    if (open && onOpen) onOpen();
+  });
+}
+setupCollapsible(formPanel, formToggle, formToggleLabel, "등록 폼", () => input.focus());
+setupCollapsible(listPanel, listToggle, listToggleLabel, "할 일 목록");
+
+
 searchInput.addEventListener("input", render);
 statusFilter.addEventListener("change", render);
 priorityFilter.addEventListener("change", render);
+sortSelect.addEventListener("change", render);
 
 loadTasks();

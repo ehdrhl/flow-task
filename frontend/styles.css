@@ -8,7 +8,7 @@ body {
 }
 
 .container {
-  max-width: 560px;
+  max-width: 1000px;
   margin: 40px auto;
   padding: 0 16px;
 }
@@ -75,7 +75,7 @@ h1 { margin: 0 0 16px; }
 .form-row.options { gap: 16px; font-size: 0.9rem; }
 .form-row.options select, .form-row.options input { padding: 4px 6px; font-size: 0.9rem; }
 textarea { width: 100%; padding: 8px 12px; font: inherit; border: 1px solid #bbb; border-radius: 6px; resize: vertical; }
-.filters { display: flex; gap: 8px; margin-top: 16px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .filters input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 0.95rem; border: 1px solid #bbb; border-radius: 6px; }
 .filters select { padding: 8px; font-size: 0.95rem; }
 #task-list li { flex-direction: column; align-items: stretch; gap: 6px; }
@@ -89,3 +89,29 @@ textarea { width: 100%; padding: 8px 12px; font: inherit; border: 1px solid #bbb
 .description { margin: 0; color: #555; font-size: 0.9rem; white-space: pre-wrap; }
 .edit-form { flex-direction: column; }
 .edit-buttons { display: flex; gap: 6px; }
+
+/* T16: 왼쪽 등록 폼 + 오른쪽 목록. 두 패널 모두 접기 가능 */
+/* 두 패널은 각자 자기 내용 높이만큼만 차지한다(서로의 접힘이 영향을 주지 않도록 stretch를 쓰지 않는다). */
+.layout { display: flex; gap: 24px; align-items: flex-start; margin-top: 16px; }
+.panel { padding: 16px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+.form-panel { flex: 0 0 380px; }
+.list-panel { flex: 1; min-width: 0; }
+.list-panel .filters { margin-top: 0; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel-header h2 { margin: 0; font-size: 1.1rem; }
+.panel-toggle { width: 32px; height: 32px; padding: 0; font-size: 1.2rem; line-height: 1; border: 1px solid #bbb; border-radius: 6px; background: #f4f5f7; color: #222; cursor: pointer; }
+.panel-toggle:hover { background: #eceff3; }
+/* 접을 때 폭은 그대로 두고 높이만 블라인드처럼 줄인다. 시작 지연이 없도록 ease-out으로 짧게 움직인다. */
+.panel-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.18s ease-out; }
+.panel-body-inner { min-height: 0; overflow: hidden; }
+/* 헤더와의 간격은 접히는 영역 안쪽 첫 요소에 둔다(접는 영역 자체에 padding을 주면 0까지 줄지 않는다). */
+.panel-body-inner > :first-child { padding-top: 12px; }
+.panel.collapsed .panel-body { grid-template-rows: 0fr; }
+.panel.collapsed .panel-body-inner { visibility: hidden; transition: visibility 0s 0.18s; }
+@media (prefers-reduced-motion: reduce) { .panel-body { transition: none; } .panel.collapsed .panel-body-inner { transition: none; } }
+.form-row.options { flex-wrap: wrap; }
+#task-form textarea { min-height: 120px; }
+@media (max-width: 720px) {
+  .layout { flex-direction: column; align-items: stretch; }
+  .form-panel { flex-basis: auto; }
+}

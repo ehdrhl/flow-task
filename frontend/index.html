@@ -9,48 +9,80 @@
 <body>
   <main class="container">
     <h1>Task Flow</h1>
-    <form id="task-form" novalidate>
-      <div class="form-row">
-        <label for="title-input" class="visually-hidden">제목</label>
-        <input id="title-input" type="text" placeholder="할 일 제목 (1~100자)" autocomplete="off">
-        <button type="submit">등록</button>
-      </div>
-      <label for="description-input" class="visually-hidden">설명</label>
-      <textarea id="description-input" rows="2" placeholder="설명 (선택, 최대 2000자)"></textarea>
-      <div class="form-row options">
-        <label>우선순위
-          <select id="priority-input">
-            <option value="HIGH">높음</option>
-            <option value="NORMAL" selected>보통</option>
-            <option value="LOW">낮음</option>
-          </select>
-        </label>
-        <label>마감일
-          <input id="due-input" type="date">
-        </label>
-      </div>
-    </form>
     <p id="error-message" class="error" role="alert" hidden></p>
-    <section class="filters" aria-label="검색과 필터">
-      <label class="visually-hidden" for="search-input">제목 검색</label>
-      <input id="search-input" type="search" placeholder="제목 검색" autocomplete="off">
-      <label class="visually-hidden" for="status-filter">상태 필터</label>
-      <select id="status-filter">
-        <option value="">모든 상태</option>
-        <option value="TODO">할 일</option>
-        <option value="DOING">진행 중</option>
-        <option value="DONE">완료</option>
-      </select>
-      <label class="visually-hidden" for="priority-filter">우선순위 필터</label>
-      <select id="priority-filter">
-        <option value="">모든 우선순위</option>
-        <option value="HIGH">높음</option>
-        <option value="NORMAL">보통</option>
-        <option value="LOW">낮음</option>
-      </select>
-    </section>
-    <ul id="task-list"></ul>
-    <p id="empty-message" class="empty">등록된 할 일이 없습니다.</p>
+    <div class="layout">
+      <aside class="panel form-panel" id="form-panel">
+        <div class="panel-header">
+          <h2>새 할 일</h2>
+          <button type="button" id="form-toggle" class="panel-toggle" aria-expanded="true" aria-controls="form-body" aria-label="등록 폼 접기">
+            <span id="form-toggle-label" aria-hidden="true">−</span>
+          </button>
+        </div>
+        <div class="panel-body" id="form-body">
+          <div class="panel-body-inner">
+            <form id="task-form" novalidate>
+              <div class="form-row">
+                <label for="title-input" class="visually-hidden">제목</label>
+                <input id="title-input" type="text" placeholder="할 일 제목 (1~100자)" autocomplete="off">
+                <button type="submit">등록</button>
+              </div>
+              <label for="description-input" class="visually-hidden">설명</label>
+              <textarea id="description-input" rows="2" placeholder="설명 (선택, 최대 2000자)"></textarea>
+              <div class="form-row options">
+                <label>우선순위
+                  <select id="priority-input">
+                    <option value="HIGH">높음</option>
+                    <option value="NORMAL" selected>보통</option>
+                    <option value="LOW">낮음</option>
+                  </select>
+                </label>
+                <label>마감일
+                  <input id="due-input" type="date">
+                </label>
+              </div>
+            </form>
+          </div>
+        </div>
+      </aside>
+      <section class="panel list-panel" id="list-panel" aria-label="할 일 목록">
+        <div class="panel-header">
+          <h2>할 일 목록</h2>
+          <button type="button" id="list-toggle" class="panel-toggle" aria-expanded="true" aria-controls="list-body" aria-label="할 일 목록 접기">
+            <span id="list-toggle-label" aria-hidden="true">−</span>
+          </button>
+        </div>
+        <div class="panel-body" id="list-body">
+          <div class="panel-body-inner">
+            <section class="filters" aria-label="검색과 필터">
+              <label class="visually-hidden" for="search-input">제목 검색</label>
+              <input id="search-input" type="search" placeholder="제목 검색" autocomplete="off">
+              <label class="visually-hidden" for="status-filter">상태 필터</label>
+              <select id="status-filter">
+                <option value="">모든 상태</option>
+                <option value="TODO">할 일</option>
+                <option value="DOING">진행 중</option>
+                <option value="DONE">완료</option>
+              </select>
+              <label class="visually-hidden" for="priority-filter">우선순위 필터</label>
+              <select id="priority-filter">
+                <option value="">모든 우선순위</option>
+                <option value="HIGH">높음</option>
+                <option value="NORMAL">보통</option>
+                <option value="LOW">낮음</option>
+              </select>
+              <label class="visually-hidden" for="sort-select">정렬</label>
+              <select id="sort-select">
+                <option value="created">등록순</option>
+                <option value="due">마감일 임박순</option>
+                <option value="priority">우선순위순</option>
+              </select>
+            </section>
+            <ul id="task-list"></ul>
+            <p id="empty-message" class="empty">등록된 할 일이 없습니다.</p>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
   <script src="app.js"></script>
 </body>
