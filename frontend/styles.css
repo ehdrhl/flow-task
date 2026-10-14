@@ -1,11 +1,43 @@
+/* Task Flow 테마: 아이보리(바탕) + 그린(주요 동작) + 블루(보조·강조·포커스).
+   오류·지연 표시는 의미가 분명한 붉은색을 그대로 쓴다. 글자 대비는 WCAG AA(4.5:1) 이상이다. */
+:root {
+  --ivory-50: #fffdf6;   /* 카드·입력칸 */
+  --ivory-100: #faf6e8;  /* 페이지 바탕 */
+  --ivory-200: #f1ebd6;  /* 보조 버튼·배지 */
+  --ivory-300: #ddd4b6;  /* 테두리 */
+  --ink: #22302a;        /* 본문 글자 */
+  --ink-muted: #56635b;  /* 보조 글자 */
+  --field-border: #857e61; /* 입력칸 테두리(대비 3:1 이상) */
+
+  --green-600: #2b7a4b;  /* 주요 버튼 */
+  --green-700: #22633c;
+  --green-800: #1b5130;
+  --green-100: #dff0e3;
+
+  --blue-600: #2a67a5;   /* 포커스·진행 중 */
+  --blue-700: #215487;
+  --blue-800: #1a4676;
+  --blue-100: #dde9f6;
+
+  --red-700: #a32a2a;    /* 오류·지연 */
+  --red-100: #fbe4e1;
+
+  --shadow: 0 1px 2px rgba(34, 48, 42, 0.08), 0 2px 8px rgba(34, 48, 42, 0.05);
+  --radius: 10px;
+}
+
 * { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: #f4f5f7;
-  color: #222;
+  background: var(--ivory-100);
+  color: var(--ink);
 }
+
+:focus-visible { outline: 3px solid var(--blue-600); outline-offset: 2px; }
 
 .container {
   max-width: 1000px;
@@ -13,7 +45,53 @@ body {
   padding: 0 16px;
 }
 
-h1 { margin: 0 0 16px; }
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 3px solid var(--green-600);
+}
+h1 { margin: 0; color: var(--green-800); letter-spacing: -0.01em; }
+.user-bar { display: flex; align-items: center; gap: 10px; }
+.current-user { padding: 4px 12px; border-radius: 999px; background: var(--green-100); color: var(--green-800); font-weight: 600; overflow-wrap: anywhere; }
+.boot-message { color: var(--ink-muted); text-align: center; margin: 48px 0; }
+
+/* 공통 입력칸·버튼 */
+input, select, textarea {
+  background: var(--ivory-50);
+  color: var(--ink);
+  border: 1px solid var(--field-border);
+  border-radius: 6px;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--blue-600); }
+input::placeholder, textarea::placeholder { color: #6d756e; }
+
+button { font: inherit; cursor: pointer; border-radius: 6px; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+.primary, #task-form button[type="submit"] {
+  border: 0;
+  background: var(--green-600);
+  color: #fff;
+  font-weight: 600;
+}
+.primary:hover:not(:disabled), #task-form button[type="submit"]:hover { background: var(--green-700); }
+.secondary, .actions button, .edit-form button {
+  border: 1px solid #c9bf9b;
+  background: var(--ivory-200);
+  color: var(--ink);
+}
+.secondary:hover:not(:disabled), .actions button:hover, .edit-form button:hover {
+  background: var(--blue-100);
+  border-color: var(--blue-600);
+  color: var(--blue-800);
+}
+.edit-form button[type="submit"] { background: var(--green-600); border-color: var(--green-600); color: #fff; }
+.edit-form button[type="submit"]:hover { background: var(--green-700); border-color: var(--green-700); color: #fff; }
+
+.error { margin: 12px 0 0; padding: 8px 12px; border-left: 4px solid var(--red-700); border-radius: 4px; background: var(--red-100); color: var(--red-700); }
 
 #task-form { display: flex; gap: 8px; }
 
@@ -21,36 +99,29 @@ h1 { margin: 0 0 16px; }
   flex: 1;
   padding: 10px 12px;
   font-size: 1rem;
-  border: 1px solid #bbb;
-  border-radius: 6px;
 }
 
 #task-form button {
   padding: 10px 18px;
   font-size: 1rem;
-  border: 0;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #fff;
-  cursor: pointer;
 }
-
-#task-form button:hover { background: #1d4ed8; }
-
-.error { margin: 8px 0 0; color: #b91c1c; }
 
 #task-list { list-style: none; margin: 16px 0 0; padding: 0; }
 
 #task-list li {
   padding: 12px;
   margin-bottom: 8px;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  background: var(--ivory-50);
+  border: 1px solid var(--ivory-300);
+  border-left: 5px solid #c9bf9b;
+  border-radius: 8px;
   overflow-wrap: anywhere;
+  box-shadow: var(--shadow);
 }
+#task-list li[data-status="DOING"] { border-left-color: var(--blue-600); }
+#task-list li[data-status="DONE"] { border-left-color: var(--green-600); }
 
-.empty { color: #777; }
+.empty { color: var(--ink-muted); }
 
 .visually-hidden {
   position: absolute;
@@ -61,7 +132,7 @@ h1 { margin: 0 0 16px; }
 }
 
 #task-list li { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-#task-list li[data-status="DONE"] .title { text-decoration: line-through; color: #777; }
+#task-list li[data-status="DONE"] .title { text-decoration: line-through; color: var(--ink-muted); }
 .title { flex: 1; }
 .actions { display: flex; gap: 6px; flex-shrink: 0; }
 .actions select, .actions button, .edit-form button { padding: 4px 8px; font-size: 0.9rem; }
@@ -74,33 +145,34 @@ h1 { margin: 0 0 16px; }
 .form-row input[type="text"] { flex: 1; }
 .form-row.options { gap: 16px; font-size: 0.9rem; }
 .form-row.options select, .form-row.options input { padding: 4px 6px; font-size: 0.9rem; }
-textarea { width: 100%; padding: 8px 12px; font: inherit; border: 1px solid #bbb; border-radius: 6px; resize: vertical; }
+textarea { width: 100%; padding: 8px 12px; font: inherit; resize: vertical; }
 .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.filters input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 0.95rem; border: 1px solid #bbb; border-radius: 6px; }
+.filters input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 0.95rem; }
 .filters select { padding: 8px; font-size: 0.95rem; }
 #task-list li { flex-direction: column; align-items: stretch; gap: 6px; }
 .row-main { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .row-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.8rem; }
-.badge { padding: 2px 8px; border-radius: 999px; background: #eceff3; color: #444; }
-.badge.priority-HIGH { background: #fee2e2; color: #991b1b; }
-.badge.priority-LOW { background: #e0f2fe; color: #075985; }
-.badge.overdue { background: #b91c1c; color: #fff; font-weight: 600; }
-#task-list li[data-overdue="true"] { border-color: #b91c1c; }
-.description { margin: 0; color: #555; font-size: 0.9rem; white-space: pre-wrap; }
+.badge { padding: 2px 8px; border-radius: 999px; background: var(--ivory-200); color: var(--ink); }
+.badge.priority-HIGH { background: var(--blue-700); color: #fff; font-weight: 600; }
+.badge.priority-LOW { background: var(--green-100); color: var(--green-800); }
+.badge.due { background: var(--blue-100); color: var(--blue-800); }
+.badge.overdue { background: var(--red-700); color: #fff; font-weight: 600; }
+#task-list li[data-overdue="true"] { border-color: var(--red-700); border-left-color: var(--red-700); }
+.description { margin: 0; color: var(--ink-muted); font-size: 0.9rem; white-space: pre-wrap; }
 .edit-form { flex-direction: column; }
 .edit-buttons { display: flex; gap: 6px; }
 
 /* T16: 왼쪽 등록 폼 + 오른쪽 목록. 두 패널 모두 접기 가능 */
 /* 두 패널은 각자 자기 내용 높이만큼만 차지한다(서로의 접힘이 영향을 주지 않도록 stretch를 쓰지 않는다). */
 .layout { display: flex; gap: 24px; align-items: flex-start; margin-top: 16px; }
-.panel { padding: 16px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
-.form-panel { flex: 0 0 380px; }
-.list-panel { flex: 1; min-width: 0; }
+.panel { padding: 16px; background: var(--ivory-50); border: 1px solid var(--ivory-300); border-radius: var(--radius); box-shadow: var(--shadow); }
+.form-panel { flex: 0 0 380px; border-top: 4px solid var(--green-600); }
+.list-panel { flex: 1; min-width: 0; border-top: 4px solid var(--blue-600); }
 .list-panel .filters { margin-top: 0; }
 .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.panel-header h2 { margin: 0; font-size: 1.1rem; }
-.panel-toggle { width: 32px; height: 32px; padding: 0; font-size: 1.2rem; line-height: 1; border: 1px solid #bbb; border-radius: 6px; background: #f4f5f7; color: #222; cursor: pointer; }
-.panel-toggle:hover { background: #eceff3; }
+.panel-header h2 { margin: 0; font-size: 1.1rem; color: var(--ink); }
+.panel-toggle { width: 32px; height: 32px; padding: 0; font-size: 1.2rem; line-height: 1; border: 1px solid #c9bf9b; border-radius: 6px; background: var(--ivory-200); color: var(--ink); cursor: pointer; }
+.panel-toggle:hover { background: var(--blue-100); border-color: var(--blue-600); color: var(--blue-800); }
 /* 접을 때 폭은 그대로 두고 높이만 블라인드처럼 줄인다. 시작 지연이 없도록 ease-out으로 짧게 움직인다. */
 .panel-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.18s ease-out; }
 .panel-body-inner { min-height: 0; overflow: hidden; }
@@ -111,7 +183,25 @@ textarea { width: 100%; padding: 8px 12px; font: inherit; border: 1px solid #bbb
 @media (prefers-reduced-motion: reduce) { .panel-body { transition: none; } .panel.collapsed .panel-body-inner { transition: none; } }
 .form-row.options { flex-wrap: wrap; }
 #task-form textarea { min-height: 120px; }
+
+/* T23: 로그인·회원가입 카드(탭 전환) */
+.auth-card { max-width: 420px; margin: 40px auto; padding: 0 0 20px; background: var(--ivory-50); border: 1px solid var(--ivory-300); border-top: 4px solid var(--green-600); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.tabs { display: flex; background: var(--ivory-200); border-bottom: 1px solid var(--ivory-300); }
+.tab { flex: 1; padding: 12px 8px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--ink-muted); font-size: 1rem; }
+.tab:hover { color: var(--blue-800); }
+.tab[aria-selected="true"] { background: var(--ivory-50); color: var(--blue-800); border-bottom-color: var(--blue-600); font-weight: 700; }
+.auth-message { margin: 16px 20px 0; padding: 8px 12px; border-radius: 4px; font-size: 0.95rem; }
+.auth-message.error { border-left: 4px solid var(--red-700); background: var(--red-100); color: var(--red-700); }
+.auth-message.notice { border-left: 4px solid var(--green-600); background: var(--green-100); color: var(--green-800); }
+.auth-form { display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 0; }
+.auth-form label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 0.95rem; }
+.auth-form input { padding: 10px 12px; font-size: 1rem; font-weight: 400; }
+.auth-form small { color: var(--ink-muted); font-weight: 400; font-size: 0.82rem; }
+.auth-form .primary { padding: 11px 16px; font-size: 1rem; margin-top: 4px; }
+
 @media (max-width: 720px) {
   .layout { flex-direction: column; align-items: stretch; }
   .form-panel { flex-basis: auto; }
+  .auth-card { margin: 24px auto; }
+  .filters input { flex-basis: 100%; }
 }

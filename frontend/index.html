@@ -8,7 +8,51 @@
 </head>
 <body>
   <main class="container">
-    <h1>Task Flow</h1>
+    <header class="app-header">
+      <h1>Task Flow</h1>
+      <div id="user-bar" class="user-bar" hidden>
+        <span id="current-user" class="current-user"></span>
+        <button type="button" id="logout-button" class="secondary">로그아웃</button>
+      </div>
+    </header>
+    <p id="boot-message" class="boot-message" role="status">로그인 상태를 확인하는 중입니다.</p>
+
+    <section id="auth-view" class="auth-card" aria-label="로그인과 회원가입" hidden>
+      <div class="tabs" role="tablist" aria-label="로그인과 회원가입">
+        <button type="button" role="tab" id="tab-login" class="tab" aria-selected="true" aria-controls="panel-login">로그인</button>
+        <button type="button" role="tab" id="tab-signup" class="tab" aria-selected="false" aria-controls="panel-signup" tabindex="-1">회원가입</button>
+      </div>
+      <p id="auth-message" class="auth-message" role="alert" hidden></p>
+      <div id="panel-login" role="tabpanel" aria-labelledby="tab-login">
+        <form id="login-form" class="auth-form" novalidate>
+          <label>아이디
+            <input id="login-username" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="20">
+          </label>
+          <label>비밀번호
+            <input id="login-password" type="password" autocomplete="current-password" maxlength="20">
+          </label>
+          <button type="submit" class="primary">로그인</button>
+        </form>
+      </div>
+      <div id="panel-signup" role="tabpanel" aria-labelledby="tab-signup" hidden>
+        <form id="signup-form" class="auth-form" novalidate>
+          <label>아이디
+            <input id="signup-username" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="20" aria-describedby="signup-username-hint">
+            <small id="signup-username-hint">영문·숫자·밑줄(_) 3~20자</small>
+          </label>
+          <label>비밀번호
+            <input id="signup-password" type="password" autocomplete="new-password" maxlength="20" aria-describedby="signup-password-hint">
+            <small id="signup-password-hint">8~20자</small>
+          </label>
+          <label>비밀번호 확인
+            <input id="signup-password-confirm" type="password" autocomplete="new-password" maxlength="20">
+          </label>
+          <button type="submit" class="primary">가입하기</button>
+        </form>
+      </div>
+    </section>
+
+    <div id="app-view" hidden>
     <p id="error-message" class="error" role="alert" hidden></p>
     <div class="layout">
       <aside class="panel form-panel" id="form-panel">
@@ -82,6 +126,7 @@
           </div>
         </div>
       </section>
+    </div>
     </div>
   </main>
   <script src="app.js"></script>
