@@ -105,7 +105,7 @@ PRD F12~F18 기반. 작업 순서는 문서 → DB → 가입 → 로그인 → 
   확인: PRD F12~F18의 각 항목이 API-SPEC 어디에 대응하는지 대조표로 확인. 문서 충돌 항목 없음.
   결과: 변경 파일 API-SPEC.md만(코드 변경 없음). "인증 API (T17 계약)" 섹션과 PRD 대조표(F12~F18과 보안 요구 전부가 문서 위치·구현 작업에 대응)를 추가하고 구현 상태 표에 T19~T22를 "계약만 확정"으로 올렸다. 공통의 "인증은 없다"는 문장은 T22부터 인증 필수로 바꿨다.
   계약에서 새로 정한 세부 사항(PRD에 없던 것): 가입 요청에 password_confirm을 서버에서도 검사, 가입 후 쿠키 미발급, 가입 중복 409(형식 위반 422가 먼저), 로그인 실패 401은 없는 아이디·비밀번호 불일치·형식 불일치를 같은 본문으로, 429에 Retry-After 헤더, 로그인 시 기존 세션 무효화, 로그아웃은 세션이 없어도 204(멱등), 세션 만료는 로그인 후 7일 고정(연장 없음), 인증 확인이 422·404보다 먼저(401 우선), 출처 검사 위반은 403(Origin이 Host와 다르거나 Sec-Fetch-Site가 cross-site·same-site, 둘 다 없으면 허용), 응답·요청에 user_id 비노출.
-  구현 때 주의(T22·T24): Nginx 설정이 Host를 $host로 넘기면 포트가 빠져 80이 아닌 포트에서 Origin 비교가 어긋난다. 80 포트에서는 문제없지만 포트를 바꾸면 $http_host로 바꿔야 한다. 5500 개발 서버는 T22부터 로그인 후 API를 쓸 수 없다(CORS 자격 증명 비허용, PRD). 비밀번호 길이를 글자 수(8~72) 기준으로 적었으며 해시 라이브러리가 바이트 제한을 두면 T19에서 갱신한다. 로그인 실패 횟수의 저장 방식은 T21에서 확정한다.
+  구현 때 주의(T22·T24): Nginx 설정이 Host를 $host로 넘기면 포트가 빠져 80이 아닌 포트에서 Origin 비교가 어긋난다. 80 포트에서는 문제없지만 포트를 바꾸면 $http_host로 바꿔야 한다. 5500 개발 서버는 T22부터 로그인 후 API를 쓸 수 없다(CORS 자격 증명 비허용, PRD). 비밀번호 길이는 글자 수 기준이며 사용자 결정으로 8~72에서 8~20자로 바꿨다(T19 시작 시 PRD·API-SPEC 반영). 로그인 실패 횟수의 저장 방식은 T21에서 확정한다.
 - [x] T18: users·sessions 테이블과 tasks.user_id 추가(DB만, API 변경 없음).
   내용: backend/models.py에 User(id, username 고유, password_hash, created_at)·Session(token_hash, user_id, created_at, expires_at), Task.user_id(NULL 허용, users.id 참조). init_db는 새 테이블만 만들고 기존 tasks에는 user_id 컬럼만 비파괴로 추가한다(기존 행·데이터 삭제 없음). 실행 전 mariadb-dump 백업을 안내한다.
   확인: python -m backend.init_db 후 SHOW CREATE TABLE, 기존 tasks 행 수 불변(3건)과 user_id NULL, 재실행해도 변경 없음, 현재 API(/api/tasks)가 여전히 동작.
@@ -116,9 +116,14 @@ PRD F12~F18 기반. 작업 순서는 문서 → DB → 가입 → 로그인 → 
   API: 새 모델 코드를 임시 8001로 실행해 /api/health 200, GET 응답에 user_id 없음, POST 201(user_id NULL), PATCH 200, user_id를 보내면 422, DELETE 204(테스트 행만 삭제). 운영(80)은 기존 프로세스로 계속 /api/tasks 200.
   실수 기록: 실행 전 스냅샷 스크립트가 모듈 경로 오류로 실패했는데 init_db가 이어서 실행됐다. 변경이 컬럼 추가뿐이고 백업이 있어 실행 후 백업 파일과 대조해 데이터 동일을 확인했다.
   남은 사항: 운영 uvicorn은 아직 이전 모델을 메모리에 가지고 있다(동작에는 문제 없음). T19에서 코드가 바뀌면 sudo systemctl restart task-flow-api로 반영한다. users.id가 시험 중 소비되어 AUTO_INCREMENT가 건너뛸 수 있다.
-- [ ] T19: 비밀번호 해시와 회원가입 API.
-  내용: 해시 라이브러리(argon2-cffi 또는 bcrypt 중 목적을 설명하고 하나) requirements.txt에 기록. 서버 검증(아이디 소문자 3~20자 영문·숫자·_, 비밀번호 8~72자, 모르는 필드 422), 아이디 소문자 저장·중복 409, 응답과 로그에 비밀번호 없음.
+- [x] T19: 비밀번호 해시와 회원가입 API.
+  내용: 해시 라이브러리(argon2-cffi 또는 bcrypt 중 목적을 설명하고 하나) requirements.txt에 기록. 서버 검증(아이디 소문자 3~20자 영문·숫자·_, 비밀번호 8~20자, 모르는 필드 422), 아이디 소문자 저장·중복 409, 응답과 로그에 비밀번호 없음.
   확인: 정상 가입 201, 대문자 아이디 중복 409, 위반 422(짧은·긴 비밀번호, 잘못된 아이디, 빈 값, 모르는 필드), DB의 password_hash가 원문과 다르고 형식 문자열(솔트 포함)임, 응답·로그에 비밀번호 없음.
+  결정 변경(사용자 요청): 비밀번호 길이를 8~72자에서 8~20자로 바꾸고 PRD F12, API-SPEC, PLAN에 반영했다. 해시 라이브러리는 argon2-cffi(argon2id)로 정했다. 목적은 비밀번호를 솔트가 포함된 느린 단방향 해시로 저장하는 것이며 backend/requirements.txt에 argon2-cffi==25.1.0을 기록했다(.venv에 설치, 의존 패키지 argon2-cffi-bindings 26.1.0·cffi 2.1.1·pycparser 3.11은 자동 설치).
+  결과: 변경 파일 backend/security.py(hash_password, verify_password), backend/main.py(POST /api/auth/signup, SignupRequest, 인증 API 422 응답에서 input·ctx 제거), backend/requirements.txt, API-SPEC.md, PRD.md, PLAN.md. 응답은 201 {id, username}이며 쿠키는 발급하지 않는다.
+  확인(임시 서버 8001, 가짜 비밀번호, 계정은 직접 삭제): 정상 가입 201, 응답 필드 id·username만, 쿠키 없음, 응답에 비밀번호 없음, 같은 아이디와 대문자만 다른 아이디 409, 대문자 입력은 소문자로 저장, 422 19건(비밀번호 7자·21자·빈 값·null·숫자, 아이디 2자·21자·공백·한글·특수문자·빈 값·null·숫자, 확인 불일치·누락, 필드 누락, 모르는 필드, id 지정, 깨진 JSON, 본문 없음), 경계값 8자·20자·앞뒤 공백 포함 비밀번호는 201. 422 응답 본문에 입력한 비밀번호 없음. 위반 요청은 저장되지 않아 DB에 정상 가입 5명만 있었다.
+  DB 확인: password_hash가 모두 $argon2id$ 형식(길이 97), 원문이 포함되지 않음, 같은 비밀번호여도 해시가 달라 솔트 적용됨, 올바른 비밀번호 검증 성공·틀린 비밀번호와 깨진 해시는 안전하게 실패. 서버 로그(journal)에 비밀번호 문자열 0건, POST는 201·409·422로만 기록. 기존 API(/api/health, GET /api/tasks 4건, /api/tasks 422 기본 형식)는 그대로. 시험 계정 5개는 직접 삭제해 users 0건, tasks 4건 유지.
+  남은 사항: 운영 uvicorn은 아직 이전 코드라 80에서는 /api/auth/signup이 없다. 반영하려면 sudo systemctl restart task-flow-api가 필요하다. 같은 출처 검사(CSRF)는 T22에서 가입·로그인·로그아웃 포함 전체에 적용한다. 시험으로 users의 AUTO_INCREMENT가 올라 첫 실제 사용자 id가 1이 아닐 수 있다.
 - [ ] T20: 로그인·로그아웃·me API와 세션.
   내용: 로그인 성공 시 무작위 세션 토큰 발급(DB에는 해시만), HttpOnly·SameSite=Lax 쿠키, 7일 만료. 로그아웃은 세션 삭제와 쿠키 제거. 아이디 없음과 비밀번호 틀림은 같은 401 메시지.
   확인: 로그인 200+Set-Cookie 속성, me 200, 로그아웃 204 후 같은 쿠키로 me 401, 만료된 세션 401, API 재시작 후에도 로그인 유지, 두 오류 케이스의 응답이 동일.

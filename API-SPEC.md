@@ -15,7 +15,7 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 | `GET /api/tasks`, `POST /api/tasks` | T06 | 구현 |
 | `PATCH /api/tasks/{id}`, `DELETE /api/tasks/{id}` | T07 | 구현 |
 | `GET /api/tasks`의 `q`, `status`, `priority` 필터 | T07 | 구현 |
-| `POST /api/auth/signup` | T19 | 계약만 확정(T17), 미구현 |
+| `POST /api/auth/signup` | T19 | 구현 |
 | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | T20 | 계약만 확정(T17), 미구현 |
 | 로그인 실패 제한(`429`) | T21 | 계약만 확정(T17), 미구현 |
 | `/api/tasks*` 인증 필수, 소유자 분리, 출처 검사 | T22 | 계약만 확정(T17), 미구현 |
@@ -82,13 +82,14 @@ PRD F12~F18을 기준으로 한다. 아래 내용은 T19~T22에서 구현하며,
 |---|---|---|
 | id | 정수 | 서버가 부여한다. |
 | username | 문자열 | 영문 대소문자·숫자·밑줄(`_`) 3~20자. 소문자로 바꿔 저장하며 대소문자만 다른 아이디는 같은 아이디이다. |
-| password | 문자열 | 8~72자(글자 수). 앞뒤 공백을 제거하지 않는다. 가입 요청에서만 받으며 저장은 솔트가 포함된 단방향 해시로만 한다. 해시 라이브러리가 바이트 길이 제한을 두면 T19에서 이 줄을 갱신한다. |
+| password | 문자열 | 8~20자(글자 수). 앞뒤 공백을 제거하지 않는다. 가입 요청에서만 받으며 저장은 솔트가 포함된 단방향 해시(argon2id)로만 한다. |
 
 ### POST /api/auth/signup (T19)
 - 요청: `username`, `password`, `password_confirm` 모두 필수. `password`와 `password_confirm`이 다르면 `422`이다.
 - 응답 `201`: `{"id": 1, "username": "alice"}` (자동 로그인하지 않으며 쿠키를 설정하지 않는다)
 - `422`: 형식 위반(아이디 문자·길이, 비밀번호 길이, 비밀번호 확인 불일치, 필드 누락·null·숫자, 모르는 필드, 잘못된 JSON, 본문 없음). 위반한 요청은 저장하지 않는다.
 - `409`: 이미 있는 아이디(대소문자 무시). 본문 `{"detail": "Username already taken"}`. 형식 검증(`422`)이 먼저이다.
+- 인증 API의 `422` 본문은 FastAPI 기본 형식에서 입력값(`input`)과 `ctx`를 뺀 `{"detail": [{"loc", "msg", "type"}]}`이다(비밀번호가 응답에 되돌아가지 않도록). `/api/tasks*`의 `422`는 기본 형식 그대로이다.
 
 ### POST /api/auth/login (T20, T21)
 - 요청: `username`, `password` 필수(문자열). 필드 누락·null·숫자·모르는 필드·잘못된 JSON·본문 없음은 `422`이다.

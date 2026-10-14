@@ -4,6 +4,8 @@ from datetime import date, timezone
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import (
@@ -14,11 +16,12 @@ from pydantic import (
     model_validator,
 )
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from backend import models
 from backend.database import SessionLocal
+from backend.security import hash_password
 
 app = FastAPI(title="Task Flow API")
 
@@ -89,6 +92,33 @@ class TaskUpdate(BaseModel):
         return self
 
 
+# 아이디: 영문 대소문자·숫자·밑줄 3~20자. 저장할 때 소문자로 바꾼다.
+Username = Annotated[
+    str, StringConstraints(min_length=3, max_length=20, pattern=r"^[A-Za-z0-9_]+$")
+]
+# 비밀번호: 8~20자. 앞뒤 공백을 제거하지 않는다.
+Password = Annotated[str, StringConstraints(min_length=8, max_length=20)]
+
+
+class SignupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: Username
+    password: Password
+    password_confirm: str
+
+    @model_validator(mode="after")
+    def check_password_confirm(self) -> "SignupRequest":
+        if self.password != self.password_confirm:
+            raise ValueError("password와 password_confirm이 다릅니다.")
+        return self
+
+
+class UserInfo(BaseModel):
+    id: int
+    username: str
+
+
 class Task(BaseModel):
     id: int
     title: str
@@ -121,6 +151,19 @@ def get_db() -> Iterator[Session]:
 def database_unavailable(request: Request, error: OperationalError) -> JSONResponse:
     # 접속 정보가 응답에 섞이지 않도록 내용 없이 상태만 알린다.
     return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
+    # 인증 API의 422에는 입력값(비밀번호)이 응답에 되돌아가지 않도록 input·ctx를 뺀다.
+    # 그 밖의 경로는 FastAPI 기본 형식 그대로이다.
+    if request.url.path.startswith("/api/auth/"):
+        detail = [
+            {key: value for key, value in item.items() if key not in ("input", "ctx")}
+            for item in error.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": detail})
+    return await request_validation_exception_handler(request, error)
 
 
 @app.get("/api/health")
@@ -187,3 +230,19 @@ def delete_task(task_id: int, db: Annotated[Session, Depends(get_db)]) -> Respon
     db.commit()
     return Response(status_code=204)
 
+
+@app.post("/api/auth/signup", status_code=201)
+def signup(payload: SignupRequest, db: Annotated[Session, Depends(get_db)]) -> UserInfo:
+    username = payload.username.lower()
+    taken = HTTPException(status_code=409, detail="Username already taken")
+    if db.scalar(select(models.User.id).where(models.User.username == username)) is not None:
+        raise taken
+    row = models.User(username=username, password_hash=hash_password(payload.password))
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        # 동시에 같은 아이디로 가입한 경우(고유 제약)도 중복으로 응답한다.
+        db.rollback()
+        raise taken
+    return UserInfo(id=row.id, username=row.username)
