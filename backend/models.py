@@ -74,3 +74,14 @@ class UserSession(Base):
         server_default=text("(UTC_TIMESTAMP())"),
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
+class LoginAttempt(Base):
+    """로그인 실패 횟수(F18). 아이디 원문 대신 소문자 아이디의 SHA-256 해시로 구분한다."""
+
+    __tablename__ = "login_attempts"
+    __table_args__ = {"mysql_charset": "utf8mb4"}
+
+    username_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_failed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

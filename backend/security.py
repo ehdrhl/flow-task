@@ -18,6 +18,11 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def hash_username(username: str) -> str:
+    """로그인 실패 횟수의 키. 아이디(소문자)의 SHA-256 해시이며 아이디 원문은 저장하지 않는다."""
+    return hashlib.sha256(username.lower().encode()).hexdigest()
+
+
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
 

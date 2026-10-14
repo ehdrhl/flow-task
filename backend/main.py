@@ -1,3 +1,5 @@
+import logging
+import math
 import os
 import re
 from collections.abc import Iterator
@@ -16,16 +18,18 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy import case, delete, select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend import models
-from backend.database import SessionLocal
+from backend.database import SessionLocal, engine
 from backend.security import (
     DUMMY_HASH,
     hash_password,
     hash_token,
+    hash_username,
     new_session_token,
     verify_password,
 )
@@ -34,6 +38,9 @@ app = FastAPI(title="Task Flow API")
 
 SESSION_COOKIE = "task_flow_session"
 SESSION_LIFETIME = timedelta(days=7)
+# 로그인 실패 제한(F18): 5회 연속 실패하면 마지막 실패로부터 5분 동안 거절하고, 5분이 지나면 횟수를 잊는다.
+MAX_FAILED_LOGINS = 5
+LOGIN_LOCK = timedelta(minutes=5)
 # HTTPS로 배포할 때만 true로 둔다. 현재 HTTP 학습 환경에서는 기본값 false이다(.env.example 참고).
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").strip().lower() == "true"
 
@@ -195,6 +202,9 @@ CurrentUser = Annotated[models.User, Depends(get_current_user)]
 
 @app.exception_handler(OperationalError)
 def database_unavailable(request: Request, error: OperationalError) -> JSONResponse:
+    # 원인 파악을 위해 MariaDB 오류 번호만 로그에 남긴다(메시지에는 접속 정보가 있을 수 있어 남기지 않는다).
+    code = getattr(error.orig, "args", ("?",))[0]
+    logging.getLogger("uvicorn.error").warning("DB 오류 %s %s code=%s", request.method, request.url.path, code)
     # 접속 정보가 응답에 섞이지 않도록 내용 없이 상태만 알린다.
     return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
 
@@ -294,6 +304,49 @@ def signup(payload: SignupRequest, db: Annotated[Session, Depends(get_db)]) -> U
     return UserInfo(id=row.id, username=row.username)
 
 
+def _record_failed_login(db: Session, key: str, now: datetime) -> None:
+    """실패 횟수를 1 늘린다. 마지막 실패로부터 5분이 지났으면 1부터 다시 센다."""
+    cutoff = now - LOGIN_LOCK
+    statement = mysql_insert(models.LoginAttempt).values(
+        username_key=key, failed_count=1, last_failed_at=now
+    )
+    # 한 문장으로 처리해 동시에 실패해도 횟수가 어긋나지 않는다. 순서가 중요하다:
+    # failed_count를 먼저 계산해야 아직 바뀌지 않은 last_failed_at을 볼 수 있다.
+    statement = statement.on_duplicate_key_update(
+        failed_count=case(
+            (models.LoginAttempt.last_failed_at <= cutoff, 1),
+            else_=models.LoginAttempt.failed_count + 1,
+        ),
+        last_failed_at=now,
+    )
+    # 같은 키를 동시에 처음 넣으면 잠금 충돌(1213·1205)이나 스냅샷 충돌(1020)이 날 수 있어 새 트랜잭션으로 짧게 재시도한다.
+    for attempt in range(3):
+        try:
+            db.execute(statement)
+            db.commit()
+            break
+        except OperationalError as error:
+            db.rollback()
+            if getattr(error.orig, "args", (0,))[0] not in (1213, 1205, 1020) or attempt == 2:
+                raise
+    _purge_old_attempts(cutoff)
+
+
+def _purge_old_attempts(cutoff: datetime) -> None:
+    """오래된 기록을 지워 표가 계속 커지지 않게 한다. 실패해도 로그인 처리에는 영향이 없다.
+
+    범위 삭제가 다른 요청의 INSERT와 잠금 충돌하지 않도록 별도 트랜잭션에서
+    READ COMMITTED로 실행한다.
+    """
+    try:
+        with engine.execution_options(isolation_level="READ COMMITTED").begin() as connection:
+            connection.execute(
+                delete(models.LoginAttempt).where(models.LoginAttempt.last_failed_at <= cutoff)
+            )
+    except SQLAlchemyError:
+        pass
+
+
 @app.post("/api/auth/login")
 def login(
     payload: LoginRequest,
@@ -301,18 +354,39 @@ def login(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
 ) -> UserInfo:
+    now = _utc_now()
+    key = hash_username(payload.username)
+    attempt = db.get(models.LoginAttempt, key)
+    if (
+        attempt is not None
+        and attempt.failed_count >= MAX_FAILED_LOGINS
+        and attempt.last_failed_at > now - LOGIN_LOCK
+    ):
+        # 제한 중에는 비밀번호를 검사하지 않고(올바른 비밀번호도 거절), 횟수와 제한 시간은 늘리지 않는다.
+        remaining = (attempt.last_failed_at + LOGIN_LOCK - now).total_seconds()
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed attempts",
+            headers={"Retry-After": str(max(1, math.ceil(remaining)))},
+        )
+
     user = None
     if len(payload.username) <= 20 and len(payload.password) <= 20:
         user = db.scalar(
             select(models.User).where(models.User.username == payload.username.lower())
         )
+    # 읽기 트랜잭션을 여기서 끝낸다. MariaDB는 읽은 뒤 다른 요청이 바꾼 행을 갱신하면 오류(1020)를
+    # 내므로, 느린 해시 검증 동안 낡은 스냅샷을 들고 있지 않게 하고 연결도 돌려준다.
+    db.commit()
     # 없는 아이디·형식 불일치도 해시 검증을 한 번 해서 처리 시간을 비슷하게 맞춘다.
     matched = verify_password(user.password_hash if user else DUMMY_HASH, payload.password)
     if user is None or not matched:
+        _record_failed_login(db, key, now)
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
+    # 성공하면 실패 횟수를 0으로 되돌린다.
+    db.execute(delete(models.LoginAttempt).where(models.LoginAttempt.username_key == key))
     # 요청에 실린 기존 세션과 만료된 세션을 정리한 뒤 새 세션을 만든다.
-    now = _utc_now()
     old_token = request.cookies.get(SESSION_COOKIE)
     if old_token:
         db.execute(
