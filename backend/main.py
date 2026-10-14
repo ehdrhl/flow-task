@@ -1,6 +1,7 @@
+import os
 import re
 from collections.abc import Iterator
-from datetime import date, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
@@ -15,15 +16,26 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from backend import models
 from backend.database import SessionLocal
-from backend.security import hash_password
+from backend.security import (
+    DUMMY_HASH,
+    hash_password,
+    hash_token,
+    new_session_token,
+    verify_password,
+)
 
 app = FastAPI(title="Task Flow API")
+
+SESSION_COOKIE = "task_flow_session"
+SESSION_LIFETIME = timedelta(days=7)
+# HTTPS로 배포할 때만 true로 둔다. 현재 HTTP 학습 환경에서는 기본값 false이다(.env.example 참고).
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").strip().lower() == "true"
 
 # 개발 단계에서는 프런트엔드(:5500)와 API(:8000)의 출처가 달라 브라우저가 CORS 허용을 요구한다.
 app.add_middleware(
@@ -114,6 +126,14 @@ class SignupRequest(BaseModel):
         return self
 
 
+class LoginRequest(BaseModel):
+    # 형식 검사는 하지 않는다. 형식이 맞지 않는 값도 "아이디 또는 비밀번호 오류"와 같게 응답한다.
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    password: str
+
+
 class UserInfo(BaseModel):
     id: int
     username: str
@@ -145,6 +165,32 @@ def to_api(row: models.Task) -> Task:
 def get_db() -> Iterator[Session]:
     with SessionLocal() as session:
         yield session
+
+
+def _utc_now() -> datetime:
+    # DB에는 시간대 없는 UTC로 저장한다.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> models.User:
+    """쿠키의 세션 토큰으로 로그인한 사용자를 찾는다. 없거나 만료되면 401이다."""
+    token = request.cookies.get(SESSION_COOKIE)
+    user = None
+    if token:
+        user = db.scalar(
+            select(models.User)
+            .join(models.UserSession, models.UserSession.user_id == models.User.id)
+            .where(
+                models.UserSession.token_hash == hash_token(token),
+                models.UserSession.expires_at > _utc_now(),
+            )
+        )
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+CurrentUser = Annotated[models.User, Depends(get_current_user)]
 
 
 @app.exception_handler(OperationalError)
@@ -246,3 +292,71 @@ def signup(payload: SignupRequest, db: Annotated[Session, Depends(get_db)]) -> U
         db.rollback()
         raise taken
     return UserInfo(id=row.id, username=row.username)
+
+
+@app.post("/api/auth/login")
+def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+) -> UserInfo:
+    user = None
+    if len(payload.username) <= 20 and len(payload.password) <= 20:
+        user = db.scalar(
+            select(models.User).where(models.User.username == payload.username.lower())
+        )
+    # 없는 아이디·형식 불일치도 해시 검증을 한 번 해서 처리 시간을 비슷하게 맞춘다.
+    matched = verify_password(user.password_hash if user else DUMMY_HASH, payload.password)
+    if user is None or not matched:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # 요청에 실린 기존 세션과 만료된 세션을 정리한 뒤 새 세션을 만든다.
+    now = _utc_now()
+    old_token = request.cookies.get(SESSION_COOKIE)
+    if old_token:
+        db.execute(
+            delete(models.UserSession).where(models.UserSession.token_hash == hash_token(old_token))
+        )
+    db.execute(delete(models.UserSession).where(models.UserSession.expires_at <= now))
+    token = new_session_token()
+    db.add(
+        models.UserSession(
+            token_hash=hash_token(token), user_id=user.id, expires_at=now + SESSION_LIFETIME
+        )
+    )
+    db.commit()
+
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=int(SESSION_LIFETIME.total_seconds()),
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return UserInfo(id=user.id, username=user.username)
+
+
+@app.post("/api/auth/logout", status_code=204)
+def logout(request: Request, db: Annotated[Session, Depends(get_db)]) -> Response:
+    # 유효한 세션이 없어도 204이다(여러 번 호출해도 같다).
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        db.execute(
+            delete(models.UserSession).where(models.UserSession.token_hash == hash_token(token))
+        )
+        db.commit()
+    response = Response(status_code=204)
+    response.delete_cookie(
+        SESSION_COOKIE, path="/", httponly=True, samesite="lax", secure=COOKIE_SECURE
+    )
+    return response
+
+
+@app.get("/api/auth/me")
+def me(user: CurrentUser, response: Response) -> UserInfo:
+    response.headers["Cache-Control"] = "no-store"
+    return UserInfo(id=user.id, username=user.username)

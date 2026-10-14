@@ -16,7 +16,7 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 | `PATCH /api/tasks/{id}`, `DELETE /api/tasks/{id}` | T07 | 구현 |
 | `GET /api/tasks`의 `q`, `status`, `priority` 필터 | T07 | 구현 |
 | `POST /api/auth/signup` | T19 | 구현 |
-| `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | T20 | 계약만 확정(T17), 미구현 |
+| `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | T20 | 구현(로그인 실패 제한 `429`는 T21) |
 | 로그인 실패 제한(`429`) | T21 | 계약만 확정(T17), 미구현 |
 | `/api/tasks*` 인증 필수, 소유자 분리, 출처 검사 | T22 | 계약만 확정(T17), 미구현 |
 
@@ -70,7 +70,7 @@ PRD F12~F18을 기준으로 한다. 아래 내용은 T19~T22에서 구현하며,
 
 ### 공통 규칙
 - 세션: 로그인에 성공하면 서버가 무작위 세션 토큰(예측할 수 없는 32바이트 이상)을 만들어 쿠키로만 돌려준다. DB에는 토큰의 해시만 저장하고 원문은 저장하지 않는다. 쿠키 값은 응답 본문에 넣지 않는다.
-- 쿠키: 이름 `task_flow_session`, 속성 `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age=604800`(7일). 만료는 로그인 시각부터 7일 고정이며 사용해도 늘어나지 않는다. `Secure`는 HTTPS 배포에서만 켜고 현재 HTTP 학습 환경에서는 끈다(설정값은 T20에서 `.env.example`에 가짜 값으로 기록).
+- 쿠키: 이름 `task_flow_session`, 속성 `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age=604800`(7일). 만료는 로그인 시각부터 7일 고정이며 사용해도 늘어나지 않는다. `Secure`는 HTTPS 배포에서만 켜고 현재 HTTP 학습 환경에서는 끈다(환경변수 `COOKIE_SECURE`, 기본 `false`, `.env.example`에 기록). 응답 헤더에는 `SameSite=lax`로 소문자로 나가며 브라우저는 대소문자를 구분하지 않는다.
 - 응답에는 사용자 아이디(`username`)와 `id`만 담는다. `password`, `password_hash`, 세션 토큰은 어떤 응답·로그에도 포함하지 않는다.
 - 인증 오류는 `401`, 본문은 `{"detail": "Not authenticated"}`이다. 인증 확인이 입력 검증(`422`)과 존재 확인(`404`)보다 먼저이다. 즉 로그인하지 않은 요청은 본문이 틀려도 `401`이다.
 - 같은 출처 검사(CSRF 방지): `POST`, `PATCH`, `DELETE` 요청(가입·로그인·로그아웃 포함)에서 `Origin` 헤더가 있으면 그 출처(스킴·호스트·포트)가 요청의 `Host`와 같아야 한다. 다르면 `403`, `{"detail": "Cross-origin request rejected"}`이며 아무것도 바꾸지 않는다. `Origin`이 없고 `Sec-Fetch-Site`가 `cross-site`나 `same-site`이면 같은 방식으로 거절한다. 둘 다 없는 요청(curl 등)은 허용한다. CORS 자격 증명 허용(`Access-Control-Allow-Credentials`)은 추가하지 않는다.
