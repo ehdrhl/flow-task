@@ -5,12 +5,14 @@ import re
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -179,25 +181,62 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _find_user(db: Session, token: str | None) -> models.User | None:
+    if not token:
+        return None
+    return db.scalar(
+        select(models.User)
+        .join(models.UserSession, models.UserSession.user_id == models.User.id)
+        .where(
+            models.UserSession.token_hash == hash_token(token),
+            models.UserSession.expires_at > _utc_now(),
+        )
+    )
+
+
 def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> models.User:
     """쿠키의 세션 토큰으로 로그인한 사용자를 찾는다. 없거나 만료되면 401이다."""
-    token = request.cookies.get(SESSION_COOKIE)
-    user = None
-    if token:
-        user = db.scalar(
-            select(models.User)
-            .join(models.UserSession, models.UserSession.user_id == models.User.id)
-            .where(
-                models.UserSession.token_hash == hash_token(token),
-                models.UserSession.expires_at > _utc_now(),
-            )
-        )
+    user = _find_user(db, request.cookies.get(SESSION_COOKIE))
+    # 읽기 트랜잭션을 끝내 뒤따르는 쓰기가 낡은 스냅샷 때문에 거부되지 않게 한다(오류 1020).
+    db.commit()
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
 
 CurrentUser = Annotated[models.User, Depends(get_current_user)]
+
+
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _is_cross_origin(request: Request) -> bool:
+    """상태를 바꾸는 요청이 다른 출처에서 왔는지 본다(CSRF 방지).
+
+    Origin이 있으면 스킴·호스트·포트가 요청과 같아야 한다. Origin이 없으면 브라우저가 보내는
+    Sec-Fetch-Site가 cross-site·same-site일 때만 거절하고, 둘 다 없는 요청(curl 등)은 허용한다.
+    """
+    origin = request.headers.get("origin")
+    if origin is not None:
+        parts = urlsplit(origin)
+        # Nginx 뒤에서는 X-Forwarded-Proto가 원래 스킴이다.
+        scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        return (
+            parts.scheme != scheme
+            or parts.netloc.lower() != request.headers.get("host", "").lower()
+        )
+    return request.headers.get("sec-fetch-site") in ("cross-site", "same-site")
+
+
+@app.middleware("http")
+async def same_origin_guard(request: Request, call_next):
+    if (
+        request.method in UNSAFE_METHODS
+        and request.url.path.startswith("/api/")
+        and _is_cross_origin(request)
+    ):
+        return JSONResponse(status_code=403, content={"detail": "Cross-origin request rejected"})
+    return await call_next(request)
 
 
 @app.exception_handler(OperationalError)
@@ -211,6 +250,15 @@ def database_unavailable(request: Request, error: OperationalError) -> JSONRespo
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
+    # 깨진 JSON 본문은 FastAPI가 의존성(로그인 확인)보다 먼저 검증하므로, 로그인하지 않은 요청이
+    # 할 일 API에서 422를 받지 않도록 여기서 401을 우선한다.
+    if request.url.path.startswith("/api/tasks"):
+        def _authenticated() -> bool:
+            with SessionLocal() as session:
+                return _find_user(session, request.cookies.get(SESSION_COOKIE)) is not None
+
+        if not await run_in_threadpool(_authenticated):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
     # 인증 API의 422에는 입력값(비밀번호)이 응답에 되돌아가지 않도록 input·ctx를 뺀다.
     # 그 밖의 경로는 FastAPI 기본 형식 그대로이다.
     if request.url.path.startswith("/api/auth/"):
@@ -229,13 +277,15 @@ def health() -> dict[str, str]:
 
 @app.get("/api/tasks")
 def list_tasks(
+    user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     q: Annotated[str | None, Query(max_length=100)] = None,
     status: Status | None = None,
     priority: Priority | None = None,
 ) -> list[Task]:
     # 제목 검색, 상태, 우선순위는 지정한 조건을 모두 만족하는(AND) 항목만 돌려준다.
-    statement = select(models.Task).order_by(models.Task.id)
+    # 로그인한 사용자의 할 일만 대상이다(소유자 없는 이전 데이터는 보이지 않는다).
+    statement = select(models.Task).where(models.Task.user_id == user.id).order_by(models.Task.id)
     keyword = (q or "").strip()
     if keyword:
         # 대소문자 구분 없이 부분 일치(DB 정렬 규칙을 따른다). %, _는 글자로 취급한다.
@@ -255,15 +305,20 @@ def _db_values(values: dict) -> dict:
 
 
 @app.post("/api/tasks", status_code=201)
-def create_task(payload: TaskCreate, db: Annotated[Session, Depends(get_db)]) -> Task:
-    row = models.Task(**_db_values(payload.model_dump()))
+def create_task(
+    user: CurrentUser, payload: TaskCreate, db: Annotated[Session, Depends(get_db)]
+) -> Task:
+    row = models.Task(**_db_values(payload.model_dump()), user_id=user.id)
     db.add(row)
     db.commit()
     return to_api(row)
 
 
-def _get_or_404(db: Session, task_id: int) -> models.Task:
-    row = db.get(models.Task, task_id)
+def _get_or_404(db: Session, user: models.User, task_id: int) -> models.Task:
+    # 다른 사용자의 할 일은 없는 id와 똑같이 404이다.
+    row = db.scalar(
+        select(models.Task).where(models.Task.id == task_id, models.Task.user_id == user.id)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return row
@@ -271,9 +326,12 @@ def _get_or_404(db: Session, task_id: int) -> models.Task:
 
 @app.patch("/api/tasks/{task_id}")
 def update_task(
-    task_id: int, payload: TaskUpdate, db: Annotated[Session, Depends(get_db)]
+    user: CurrentUser,
+    task_id: int,
+    payload: TaskUpdate,
+    db: Annotated[Session, Depends(get_db)],
 ) -> Task:
-    row = _get_or_404(db, task_id)
+    row = _get_or_404(db, user, task_id)
     for name, value in _db_values(payload.model_dump(exclude_unset=True)).items():
         setattr(row, name, value)
     db.commit()
@@ -281,8 +339,10 @@ def update_task(
 
 
 @app.delete("/api/tasks/{task_id}", status_code=204)
-def delete_task(task_id: int, db: Annotated[Session, Depends(get_db)]) -> Response:
-    db.delete(_get_or_404(db, task_id))
+def delete_task(
+    user: CurrentUser, task_id: int, db: Annotated[Session, Depends(get_db)]
+) -> Response:
+    db.delete(_get_or_404(db, user, task_id))
     db.commit()
     return Response(status_code=204)
 

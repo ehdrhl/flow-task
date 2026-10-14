@@ -6,7 +6,7 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 ## 공통
 - 요청과 응답 본문은 JSON(UTF-8)이다.
 - 입력 검증은 서버에서도 한다. 규칙을 어기면 `422`를 돌려주며, 본문은 FastAPI 기본 형식(`{"detail": [...]}`)이다.
-- 인증: T22부터 `/api/tasks*`는 로그인이 필요하다(`/api/health`는 인증 없이 항상 가능). 현재(T21까지)는 인증이 없으며, 아래 "인증 API (T17 계약)"는 구현 전에 확정한 계약이다.
+- 인증: `/api/tasks*`는 로그인이 필요하고(T22) 본인의 할 일에만 적용된다. `/api/health`는 인증 없이 항상 가능하다. 아래 "인증 API (T17 계약)"를 따른다. 아래 T06·T07 명세의 상태 코드·검증은 로그인한 상태를 기준으로 하며, 로그인하지 않으면 모두 `401`이다.
 
 ## 구현 상태
 | 엔드포인트 | 작업 | 상태 |
@@ -18,7 +18,7 @@ PRD.md의 요구사항을 기준으로 하며, 각 엔드포인트는 PLAN.md의
 | `POST /api/auth/signup` | T19 | 구현 |
 | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | T20 | 구현(로그인 실패 제한 `429`는 T21) |
 | 로그인 실패 제한(`429`) | T21 | 구현 |
-| `/api/tasks*` 인증 필수, 소유자 분리, 출처 검사 | T22 | 계약만 확정(T17), 미구현 |
+| `/api/tasks*` 인증 필수, 소유자 분리, 출처 검사 | T22 | 구현 |
 
 ## GET /api/health
 서버 상태를 확인한다.
@@ -73,6 +73,7 @@ PRD F12~F18을 기준으로 한다. 아래 내용은 T19~T22에서 구현하며,
 - 쿠키: 이름 `task_flow_session`, 속성 `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age=604800`(7일). 만료는 로그인 시각부터 7일 고정이며 사용해도 늘어나지 않는다. `Secure`는 HTTPS 배포에서만 켜고 현재 HTTP 학습 환경에서는 끈다(환경변수 `COOKIE_SECURE`, 기본 `false`, `.env.example`에 기록). 응답 헤더에는 `SameSite=lax`로 소문자로 나가며 브라우저는 대소문자를 구분하지 않는다.
 - 응답에는 사용자 아이디(`username`)와 `id`만 담는다. `password`, `password_hash`, 세션 토큰은 어떤 응답·로그에도 포함하지 않는다.
 - 인증 오류는 `401`, 본문은 `{"detail": "Not authenticated"}`이다. 인증 확인이 입력 검증(`422`)과 존재 확인(`404`)보다 먼저이다. 즉 로그인하지 않은 요청은 본문이 틀려도 `401`이다.
+- 구현 메모(T22): 깨진 JSON 본문은 FastAPI가 로그인 확인보다 먼저 검사하므로, `/api/tasks*`의 `422` 응답 직전에 로그인 여부를 다시 확인해 로그인하지 않은 요청에는 `401`을 우선한다. 같은 출처 검사는 `/api/` 아래 `POST`·`PUT`·`PATCH`·`DELETE`에 가장 먼저 적용되어 로그인·본문 검증보다 앞서 `403`이 나간다. Nginx는 `Host`를 `$http_host`로 그대로 넘기고 `X-Forwarded-Proto`로 원래 스킴을 알려야 한다.
 - 같은 출처 검사(CSRF 방지): `POST`, `PATCH`, `DELETE` 요청(가입·로그인·로그아웃 포함)에서 `Origin` 헤더가 있으면 그 출처(스킴·호스트·포트)가 요청의 `Host`와 같아야 한다. 다르면 `403`, `{"detail": "Cross-origin request rejected"}`이며 아무것도 바꾸지 않는다. `Origin`이 없고 `Sec-Fetch-Site`가 `cross-site`나 `same-site`이면 같은 방식으로 거절한다. 둘 다 없는 요청(curl 등)은 허용한다. CORS 자격 증명 허용(`Access-Control-Allow-Credentials`)은 추가하지 않는다.
 - DB 접속 불가 시 인증 API도 `503`(`{"detail": "Database unavailable"}`)이다.
 - 모르는 필드는 `422`이다.
