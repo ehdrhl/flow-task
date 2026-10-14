@@ -59,19 +59,89 @@
   테스트로 만든 행은 모두 직접 삭제했고 tasks는 비어 있다. 중간에 테스트 스크립트 오류로 생긴 행 14건은 내용(제목·생성 시각)을 확인한 뒤 해당 id만 삭제했다.
   남은 사항: q 검색이 악센트도 구분하지 않는다(cafe로 café 검색). 대소문자 무시는 이전과 같고 악센트 차이만 있어 API-SPEC에 적었다. 프런트엔드는 받아온 목록에 화면에서 필터를 적용하므로 영향이 없다. 사용자가 브라우저에서 http://localhost:8000 화면, 등록 후 새로고침 유지, /docs를 확인했다.
 ## 5장: 서버 분리
-- [ ] T12: DB 서버 구성 후 App 서버에서 SELECT 1 확인.
-- [ ] T13: App 서버 코드·가상환경·환경변수·systemd 구성.
+- [x] T12: DB 서버 구성 후 App 서버에서 SELECT 1 확인.
+  결과: 사용자 결정에 따라 App과 DB가 같은 WSL 한 대에 있는 구성으로 완료 처리했다. 네트워크가 분리된 별도 서버는 아니며 App은 127.0.0.1:3306으로 접속한다. 이 구성에서 App 환경(.venv, .env)으로 SELECT 1 → 1, 접속 계정 task_flow_app@localhost, DATABASE()=task_flow 확인. 계정 권한은 task_flow.*로 제한(T09 확인). DB 설정·계정·.env는 변경하지 않았다.
+  남은 사항: 서버를 실제로 나눌 때는 bind-address, 접속 허용 호스트(task_flow_app@<App IP>), 방화벽(3306은 App에서만), 긴 무작위 비밀번호로 다시 구성하고 App 서버에서 SELECT 1을 재확인해야 한다(T09의 비밀번호 길이 남은 사항 포함).
+- [x] T13: App 서버 코드·가상환경·환경변수·systemd 구성.
   확인: App에서 /api/health 응답.
-- [ ] T14: Web 서버 Nginx와 정적 파일·/api 프록시 구성.
+  진행(설치 전): 변경 파일 deploy/task-flow-api.service(User=donkey, WorkingDirectory, EnvironmentFile=.env, uvicorn 127.0.0.1:8000, Restart=on-failure, NoNewPrivileges·PrivateTmp). 비밀번호는 유닛에 쓰지 않고 .env(Git 제외)에서만 읽는다. 가상환경(.venv)·requirements.txt는 기존 것을 그대로 쓴다. 새 패키지 없음.
+  확인: systemd-analyze verify 통과. 같은 실행 명령과 EnvironmentFile 방식을 사용자 수준 임시 유닛(포트 8001)으로 실행해 /api/health 200, /api/tasks 200, / 200, 로그에 비밀번호 없음, 종료 후 포트 해제 확인(8000 서버는 건드리지 않음).
+  결과: 사용자가 sudo로 /etc/systemd/system/task-flow.service를 설치하고 enable --now 했다(이후 사용자 요청으로 유닛 이름을 task-flow-api.service로 변경, 아래 이름 변경 참고). 확인(이 환경에서 조회): is-enabled=enabled, is-active=active, NRestarts=0, uvicorn이 127.0.0.1:8000만 대기(0.0.0.0 아님), /api/health 200 {"status":"ok"}, /api/tasks 200, / 200, journal 로그에 비밀번호 없음, .env 권한 600. 사용자가 재시작 후에도 동작함을 확인했다고 알렸다(재시작 자체는 sudo가 필요해 이 환경에서 직접 실행하지 못함).
+  이름 변경: 유닛 파일을 deploy/task-flow-api.service로 바꿨다(systemd-analyze verify 통과). 기존 task-flow.service와 같은 8000 포트를 쓰므로 기존 서비스를 중지·비활성화·삭제한 뒤 새 이름으로 설치해야 한다. 사용자가 기존 서비스를 제거하고 새 이름으로 설치해 enable·start했고, 이 환경에서 enabled·active·NRestarts=0, 설치본과 저장소 파일 동일, /api/health 200을 확인했다. 사용자가 sudo systemctl stop·start 후 정상 동작을 확인했다고 알렸다(stop·start는 sudo가 필요해 이 환경에서 직접 실행하지 못함).
+  남은 사항: T14에서 Nginx가 같은 WSL이면 127.0.0.1:8000 프록시를 그대로 쓴다. 다른 서버에 두면 --host를 App 사설 IP로 바꾸고 8000을 Web 서버에서만 접근하게 제한해야 한다. 코드·.env 변경 후에는 sudo systemctl restart task-flow가 필요하다.
+- [x] T14: Web 서버 Nginx와 정적 파일·/api 프록시 구성.
   확인: Web 주소로 등록, DB 저장, App 재시작 후 유지.
+  진행(설치 전): 변경 파일 deploy/nginx/task-flow.conf(80 포트, root /var/www/task-flow, /api/ → 127.0.0.1:8000 프록시, 숨김 파일 차단, server_tokens off, 본문 1MB 제한). /home/donkey가 750이라 Nginx(www-data)가 프로젝트 폴더를 읽을 수 없어 정적 파일은 /var/www/task-flow로 복사해 제공한다. frontend/app.js는 5500 외 주소에서 같은 출처 /api를 쓰므로 변경 없음, 새 패키지 없음.
+  확인(sudo 없이 임시 Nginx 8081, 같은 설정에 포트·root만 바꿈, 종료·포트 해제함): nginx -t 통과, / · styles.css · app.js 200과 올바른 Content-Type, /api/health·/api/tasks 200, POST 201, PATCH 200, DB에서 SQL로 행 확인, 빈 제목 422, DELETE 204(테스트 행 id 41만 삭제, 행 수 3→3), /.env·/.git/config 403, 없는 경로 404, 로그에 비밀 없음.
+  설치 확인(사용자가 sudo로 설치, 이 환경에서 조회): sites-enabled에 task-flow.conf만 있고 default는 제거됨, /var/www/task-flow 파일이 현재 frontend/와 동일(정렬·폼 배치 포함), 설치된 설정이 저장소 파일과 동일, nginx active. 80 포트: / 200, /api/health 200, POST 201(id 42)·DB에서 SQL 조회·DELETE 204(테스트 행만 삭제, 행 수 3 유지), /.env·/.git/config 403, /backend/main.py 404, Server 헤더에 버전 없음.
+  8000 포트 변경(사용자 요청, 적용 전): 8000은 API 전용으로 두고 화면은 Nginx(80)에서만 제공한다. backend/main.py에서 frontend/ StaticFiles 마운트(단일 포트 통합 변경)와 미사용 import(Path, StaticFiles)를 제거했다. API 경로·계약·CORS는 그대로다. uvicorn은 127.0.0.1:8000, Nginx 프록시도 127.0.0.1:8000이다(중간에 시도한 Unix 소켓 방식은 요청에 따라 되돌림).
+  확인(sudo 없이 새 코드를 임시 포트 8001과 임시 Nginx 8081로 실행, 종료함): 8001에서 / · /index.html · /app.js · /styles.css 404, /api/health·/api/tasks·/docs 200. 8081(Nginx)에서 / · /app.js 200, /api/health·/api/tasks 200, POST 201, DELETE 204(테스트 행만 삭제). 운영 8000은 아직 이전 코드라 / 200이므로 sudo systemctl restart task-flow-api 후 적용된다.
+  영향: 8000에서는 화면이 열리지 않고(JSON 404) API와 /docs만 열린다. 화면은 http://localhost(80)에서 본다. 이전의 "8000 단일 포트" 편의 설정은 폐지한다.
+  최종 확인: App 재시작(11:50, NRestarts=0) 후 8000에서 / · /app.js 404, /api/health·/api/tasks 200(API 전용), 80에서 / · /app.js 200, /api/health·/api/tasks 200, /.env 403. 80으로 POST 201(id 45)·SQL로 DB 행 확인·DELETE 204(테스트 행만 삭제, 행 수 3 유지). 재시작 이전부터 있던 행(id 37·38·40)이 재시작 후에도 그대로 있어 데이터 유지를 확인했다. /var/www/task-flow 정적 파일은 현재 frontend/와 동일, 서비스 파일은 저장소와 동일(Nginx 설정은 첫 줄 주석만 다름, 동작 무관).
+  남은 사항: 8000의 /docs(Swagger)는 열려 있다. 브라우저 표시는 사용자 확인 필요 없이 위 curl 결과로 갈음했다. 프런트를 바꾸면 /var/www/task-flow로 다시 복사해야 한다.
+## 6장: 추가 기능
+- [x] T15: 목록 정렬(F10). 등록순·마감일 임박순·우선순위순.
+  확인: 정렬 중 수정·삭제가 정확한 id에 적용, 필터와 함께 동작, 새로고침 후 등록순으로 시작.
+  결과(브라우저 확인 전): 변경 파일 frontend/index.html(정렬 select), app.js(sortedTasks), styles.css(.filters 줄바꿈 허용), PRD.md(F10). 받아온 목록 사본을 정렬해 표시하며 tasks 원본·API·DB는 변경 없음.
+  Node로 정렬 로직 4건 통과(등록순, 마감일순에서 같은 날은 id순·마감 없음 마지막, 우선순위순에서 같은 우선순위는 id순, 알 수 없는 값은 등록순, 원본 불변). node --check 통과, 8000에서 index.html에 정렬 select 포함 확인.
+  통합 확인(운영 구성 80 포트): /에 정렬 select, app.js에 정렬 코드가 제공됨. 80의 API로 테스트 행 4건(id 46~49: 낮음·먼 마감 / 높음·마감 없음 / 보통·가까운 마감 / 높음·가까운 마감)을 등록하고 실제 응답에 화면과 같은 정렬 코드를 적용: 등록순 ABCD, 마감일순 CDAB(같은 날은 id순, 마감 없음 마지막), 우선순위순 BDCA(같은 우선순위는 id순) 통과. 테스트 행 4건만 삭제, 기존 행(37·38·40) 유지. .env 비밀번호 문제는 해결됨.
+  사용자가 브라우저(http://localhost)에서 정렬 동작을 확인했다.
+- [ ] T16: 등록 폼 접기·펼치기, 왼쪽 등록 폼과 오른쪽 목록 배치(F11).
+  확인: 폼 접기·펼치기, 접었다 펴도 입력값 유지, 좁은 화면에서 위아래 배치, 기존 등록·정렬·필터·수정·삭제 정상.
+  결과(브라우저 확인 전): 변경 파일 frontend/index.html(.layout, 등록 폼 aside + 토글 버튼, 목록 section), styles.css(2열 배치, 720px 이하 1열, 컨테이너 1000px), app.js(토글, aria-expanded), PRD.md(F11). API·DB·기존 id는 변경 없음.
+  Node DOM 목으로 토글 확인(접힘: form hidden·collapsed·aria-expanded=false·라벨 변경, 펼침: 복원과 제목 입력 포커스, 입력값 유지). app.js의 getElementById 대상이 모두 index.html에 존재, 태그 구조 이상 없음, 8000에서 세 파일 200과 /api/tasks 200 확인.
+  수정(사용자 요청): 등록 폼을 목록 칸 높이에 맞춰 늘리고(폭 380px, 설명 칸 높이 확대) 접기 버튼을 −/+ 기호만 표시(제목 "새 할 일", aria-label로 접근성 유지). 접으면 폼 높이는 헤더만 남는다.
+  수정(사용자 요청): 접을 때 폭(380px)은 고정하고 높이만 블라인드처럼 줄인다(grid-template-rows 1fr→0fr, 0.25초, prefers-reduced-motion이면 전환 없음). 접힌 폼은 visibility:hidden이라 키보드 포커스에서 빠지고, form.hidden 대신 패널의 collapsed 클래스로만 제어한다. 변경 파일 index.html(.form-body 래퍼), styles.css, app.js. 이후 통합 확인 항목은 이 수정 전 기록이며, 수정본은 /var/www/task-flow에 다시 복사해야 80에서 보인다. 토글 DOM 목 테스트는 수정본으로 다시 통과(접힘 + / 펼침 − 와 포커스, 태그 구조 이상 없음).
+  수정2(사용자 요청): 오른쪽 "할 일 목록" 패널도 같은 방식으로 접을 수 있게 했다(헤더 "할 일 목록"과 −/+ 버튼, 검색·필터·정렬·목록·빈 메시지를 접음). 두 패널은 서로 독립이며 공통 .panel 클래스와 setupCollapsible()로 처리한다. 접었다 펼칠 때 느껴지는 지연을 줄이려고 전환을 0.25초 ease에서 0.18초 ease-out으로 바꿨다(체감 지연의 원인은 브라우저가 없어 직접 보지 못했고 전환 시작이 느린 곡선과 길이로 추정). 변경 파일 index.html, styles.css(.form-* → .panel-*), app.js. Node DOM 목 4건 통과(폼 접기, 목록 접기 독립, 폼 펼침과 포커스, 목록 펼침), 태그·id·aria-controls 대상 이상 없음. 수정본은 /var/www/task-flow에 다시 복사해야 80에서 보인다.
+  수정3(사용자 요청): 오른쪽 패널을 접어도 카드가 왼쪽 높이까지 늘어난 채 목록만 사라지고 왼쪽이 같이 변하던 문제를 고쳤다. 원인은 .layout의 align-items: stretch와 .list-panel.collapsed의 align-self: stretch였다. 두 패널을 align-items: flex-start로 독립시켜 각자 내용 높이만큼만 차지한다(좁은 화면은 column에서 stretch로 폭 유지). 왼쪽을 펼칠 때 패널 높이가 먼저 커지고 내용이 서서히 열려 지연처럼 보이던 현상도 같은 원인이다. 접은 상태에서 헤더 아래 12px 여백이 남던 것은 접히는 영역 안쪽 첫 요소로 padding을 옮겨 해결했다. 이전 요청의 "폼과 목록 높이 맞춤"은 서로 영향을 주지 않는 독립 높이로 대체됐다. 변경 파일 styles.css. 수정본은 /var/www/task-flow에 다시 복사해야 80에서 보인다.
+  통합 확인(운영 구성 80 포트): 제공 중인 HTML에 .layout·#form-panel·#form-toggle(aria-label "등록 폼 접기")·.form-header, styles.css에 배치·720px 이하 규칙, app.js에 토글 코드가 있음. /var/www/task-flow가 frontend/와 동일. 토글 DOM 목 테스트 통과(접힘 +, 펼침 −와 포커스). 회귀: 80 경유 등록·PATCH 200·DELETE 204(테스트 행만 삭제, 기존 행 37·38·40 유지).
+  남은 확인: 실제 배치와 반응형은 브라우저에서 확인 필요(이 환경에는 브라우저가 없어 화면 렌더링은 확인하지 못함).
+## 7장: 여러 사용자(회원가입·로그인·로그아웃)
+PRD F12~F18 기반. 작업 순서는 문서 → DB → 가입 → 로그인 → 보호·분리 → 화면 → 배포 확인이다.
+승인된 결정: 로그인 아이디 방식(이메일 아님), 서버 세션+HttpOnly 쿠키(JWT 아님), 로그인 실패 제한(F18) 포함, 기존 tasks 3건은 삭제·이전하지 않고 소유자 없는 행으로 남김, 인증 도입으로 /api/tasks의 계약이 바뀜(401), 해시 라이브러리 추가, 현재 HTTP라 쿠키 Secure는 끔.
+각 작업 확인 항목은 두 사용자 계정(예: 테스트 전용 계정)으로 본다. 확인용 계정·행은 직접 만든 것만 삭제한다.
+- [x] T17: API-SPEC.md에 인증 API 계약 작성(코드 변경 없음).
+  내용: POST /api/auth/signup(201, 중복 409, 형식 위반 422), POST /api/auth/login(200+쿠키, 실패 401 동일 메시지, 제한 429), POST /api/auth/logout(204), GET /api/auth/me(200 아이디, 미로그인 401). /api/tasks* 는 미인증 401, 남의 id 404. 쿠키 이름·속성(HttpOnly, SameSite=Lax, 경로 /, 7일), 요청·응답 예시, 오류 형식.
+  확인: PRD F12~F18의 각 항목이 API-SPEC 어디에 대응하는지 대조표로 확인. 문서 충돌 항목 없음.
+  결과: 변경 파일 API-SPEC.md만(코드 변경 없음). "인증 API (T17 계약)" 섹션과 PRD 대조표(F12~F18과 보안 요구 전부가 문서 위치·구현 작업에 대응)를 추가하고 구현 상태 표에 T19~T22를 "계약만 확정"으로 올렸다. 공통의 "인증은 없다"는 문장은 T22부터 인증 필수로 바꿨다.
+  계약에서 새로 정한 세부 사항(PRD에 없던 것): 가입 요청에 password_confirm을 서버에서도 검사, 가입 후 쿠키 미발급, 가입 중복 409(형식 위반 422가 먼저), 로그인 실패 401은 없는 아이디·비밀번호 불일치·형식 불일치를 같은 본문으로, 429에 Retry-After 헤더, 로그인 시 기존 세션 무효화, 로그아웃은 세션이 없어도 204(멱등), 세션 만료는 로그인 후 7일 고정(연장 없음), 인증 확인이 422·404보다 먼저(401 우선), 출처 검사 위반은 403(Origin이 Host와 다르거나 Sec-Fetch-Site가 cross-site·same-site, 둘 다 없으면 허용), 응답·요청에 user_id 비노출.
+  구현 때 주의(T22·T24): Nginx 설정이 Host를 $host로 넘기면 포트가 빠져 80이 아닌 포트에서 Origin 비교가 어긋난다. 80 포트에서는 문제없지만 포트를 바꾸면 $http_host로 바꿔야 한다. 5500 개발 서버는 T22부터 로그인 후 API를 쓸 수 없다(CORS 자격 증명 비허용, PRD). 비밀번호 길이를 글자 수(8~72) 기준으로 적었으며 해시 라이브러리가 바이트 제한을 두면 T19에서 갱신한다. 로그인 실패 횟수의 저장 방식은 T21에서 확정한다.
+- [x] T18: users·sessions 테이블과 tasks.user_id 추가(DB만, API 변경 없음).
+  내용: backend/models.py에 User(id, username 고유, password_hash, created_at)·Session(token_hash, user_id, created_at, expires_at), Task.user_id(NULL 허용, users.id 참조). init_db는 새 테이블만 만들고 기존 tasks에는 user_id 컬럼만 비파괴로 추가한다(기존 행·데이터 삭제 없음). 실행 전 mariadb-dump 백업을 안내한다.
+  확인: python -m backend.init_db 후 SHOW CREATE TABLE, 기존 tasks 행 수 불변(3건)과 user_id NULL, 재실행해도 변경 없음, 현재 API(/api/tasks)가 여전히 동작.
+  결과: 변경 파일 backend/models.py(User, UserSession, Task.user_id), backend/init_db.py(없는 테이블만 생성, 기존 tasks에는 user_id 컬럼·인덱스·외래 키만 비파괴로 추가). 새 패키지 없음.
+  백업: 실행 전 mariadb-dump로 /home/donkey/backups/task_flow-20261014-133740-before-T18.sql(권한 600, 저장소 밖)을 만들었다. 비밀번호는 임시 옵션 파일(600)로만 전달하고 삭제했으며 덤프에 비밀번호 문자열 없음.
+  실행: .venv/bin/python -m backend.init_db → users·sessions 새로 생성, tasks "user_id 컬럼만 추가". 재실행하면 세 테이블 모두 "이미 있어 건드리지 않음"이고 변경 없음.
+  확인: SHOW CREATE TABLE로 users(username 고유, 길이 3 이상 CHECK), sessions(token_hash 기본 키, user_id 외래 키 ON DELETE CASCADE, expires_at·user_id 인덱스), tasks(user_id INT NULL, 인덱스, fk_tasks_user_id) 확인. tasks 4건(id 37·38·40·51)이 백업과 id·내용 모두 같고 user_id는 모두 NULL(실행 전 3건이 아니라 사용자가 등록한 id 51이 추가되어 4건이었다). 제약은 트랜잭션 안에서 시험하고 모두 롤백: 없는 user_id 거부(1452), 2자 아이디 거부(4025), 대소문자만 다른 아이디 중복 거부(1062), 사용자 삭제 시 세션 CASCADE, 할 일이 있는 사용자 삭제는 거부(1451, 데이터 보호). 롤백 후 users·sessions 0건, tasks 4건.
+  API: 새 모델 코드를 임시 8001로 실행해 /api/health 200, GET 응답에 user_id 없음, POST 201(user_id NULL), PATCH 200, user_id를 보내면 422, DELETE 204(테스트 행만 삭제). 운영(80)은 기존 프로세스로 계속 /api/tasks 200.
+  실수 기록: 실행 전 스냅샷 스크립트가 모듈 경로 오류로 실패했는데 init_db가 이어서 실행됐다. 변경이 컬럼 추가뿐이고 백업이 있어 실행 후 백업 파일과 대조해 데이터 동일을 확인했다.
+  남은 사항: 운영 uvicorn은 아직 이전 모델을 메모리에 가지고 있다(동작에는 문제 없음). T19에서 코드가 바뀌면 sudo systemctl restart task-flow-api로 반영한다. users.id가 시험 중 소비되어 AUTO_INCREMENT가 건너뛸 수 있다.
+- [ ] T19: 비밀번호 해시와 회원가입 API.
+  내용: 해시 라이브러리(argon2-cffi 또는 bcrypt 중 목적을 설명하고 하나) requirements.txt에 기록. 서버 검증(아이디 소문자 3~20자 영문·숫자·_, 비밀번호 8~72자, 모르는 필드 422), 아이디 소문자 저장·중복 409, 응답과 로그에 비밀번호 없음.
+  확인: 정상 가입 201, 대문자 아이디 중복 409, 위반 422(짧은·긴 비밀번호, 잘못된 아이디, 빈 값, 모르는 필드), DB의 password_hash가 원문과 다르고 형식 문자열(솔트 포함)임, 응답·로그에 비밀번호 없음.
+- [ ] T20: 로그인·로그아웃·me API와 세션.
+  내용: 로그인 성공 시 무작위 세션 토큰 발급(DB에는 해시만), HttpOnly·SameSite=Lax 쿠키, 7일 만료. 로그아웃은 세션 삭제와 쿠키 제거. 아이디 없음과 비밀번호 틀림은 같은 401 메시지.
+  확인: 로그인 200+Set-Cookie 속성, me 200, 로그아웃 204 후 같은 쿠키로 me 401, 만료된 세션 401, API 재시작 후에도 로그인 유지, 두 오류 케이스의 응답이 동일.
+- [ ] T21: 로그인 실패 제한(F18).
+  내용: 같은 아이디로 연속 5회 실패 시 5분 동안 429(성공 시 초기화). 존재하지 않는 아이디도 같은 방식으로 제한해 아이디 존재 여부를 드러내지 않는다.
+  확인: 5회 실패 후 6번째는 올바른 비밀번호여도 429, 5분 뒤(또는 테스트용 짧은 시간으로 확인) 복구, 다른 아이디에는 영향 없음, 성공 로그인은 카운트 초기화.
+- [ ] T22: 할 일 API 인증 필수와 소유자 분리, CSRF 방지.
+  내용: /api/tasks* 에 로그인 의존성 적용(미인증 401), 모든 조회·수정·삭제·등록·필터에 user_id 조건, 남의 id는 404. POST·PATCH·DELETE는 Origin/Sec-Fetch-Site 검사로 같은 출처가 아닌 요청 거절. 기존 user_id NULL 행은 어떤 사용자에게도 보이지 않는다. 기존 T06·T07 검증 항목은 로그인 상태로 재확인한다.
+  확인: 미인증 전 경로 401, 사용자 A·B 목록이 서로 다름, B가 A의 id를 PATCH·DELETE하면 404이고 데이터 불변, user_id NULL 3건은 둘 다에게 안 보임, 다른 출처 Origin의 POST 거절, 기존 계약 검증(등록·기본값·422·필터 AND·id 재사용 없음)이 로그인 상태로 통과.
+- [ ] T23: 프런트엔드 로그인·회원가입 화면과 로그아웃.
+  내용: 로그인·회원가입 화면(전환 링크), 로그인한 아이디 표시와 로그아웃 버튼, 시작 시 me로 로그인 확인, 401이면 로그인 화면으로, 오류(형식·중복·로그인 실패·429)를 화면에 글자로 표시, 로그아웃 시 목록 비우기. 기존 등록·정렬·폼 접기·필터는 그대로. 비밀번호는 저장하지 않는다(localStorage 포함).
+  확인: Node DOM 목+실제 API로 가입→로그인→등록→로그아웃→뒤로 가기 후 목록 미노출, 새로고침 시 로그인 유지, 다른 계정 로그인 시 목록이 다름, 사용자 입력이 HTML로 실행되지 않음, 사용자가 브라우저에서 확인.
+- [ ] T24: 배포 반영과 통합 확인(Nginx 80).
+  내용: 서비스 재시작, /var/www/task-flow로 정적 파일 복사, Nginx 경유로 쿠키 설정·유지 확인. 8000은 API 전용 유지.
+  확인: 80에서 두 사용자가 각자 가입·로그인·등록, 서로의 할 일이 안 보임, App 재시작 후 로그인과 데이터 유지, 로그아웃 후 /api/tasks 401, DB에서 비밀번호 원문 없음, 8000에서 화면 404 유지.
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-T11 이후 편의 설정: 위 uvicorn 하나가 frontend/ 정적 파일도 함께 제공한다. 화면과 API를 http://localhost:8000 하나로 쓴다(별도 5500 서버는 필요 없고, 띄워도 동작한다). 최종 배포(T14)에서는 Nginx가 정적 파일과 /api 프록시를 맡는다.
+T11 이후 편의 설정(T14에서 폐지): 한때 uvicorn이 frontend/도 함께 제공했다. T14부터 8000은 API 전용이고 화면은 Nginx(http://localhost)가 제공한다. 개발 중 화면만 따로 볼 때는 python3 -m http.server 5500 --directory frontend를 쓴다(CORS 허용, API는 8000).
 실제 존재하는 파일을 확인한 뒤 명령을 실행한다.
 ## 기록
 각 작업에 변경 파일, 실행 명령, 실제 확인 결과, 남은 오류를 기록한다.
 정상 동작을 확인한 작업 단위로 Git 커밋한다.
-## 추가 변경: 단일 포트(8000)
+## 추가 변경: 단일 포트(8000) — T14에서 폐지(8000은 API 전용, 아래는 당시 기록)
 요청에 따라 FastAPI가 frontend/를 같은 포트에서 제공하도록 backend/main.py 끝에 StaticFiles를 연결했다(PLAN의 작업 번호 밖의 변경).
 확인(curl·Node): /, index.html, styles.css, app.js 200과 올바른 Content-Type. /api/health·/api/tasks·/docs 기존대로 200. 없는 경로는 JSON 404, DELETE /api/tasks는 405, POST /는 405. ../.env, %2e%2e, ../backend/main.py, ../.git/config 등 경로 탈출 시도는 모두 404이며 본문에 비밀 없음. 5500 출처 CORS 유지. 8000에서 열린 화면 JS는 같은 출처 /api로 등록·상태 변경·삭제가 동작하고 화면과 서버 목록이 일치(사용자 데이터 불변, 확인용 행은 직접 삭제). 사용자가 브라우저에서 http://localhost:8000 화면, 등록 후 새로고침 유지, /docs를 확인했다.
